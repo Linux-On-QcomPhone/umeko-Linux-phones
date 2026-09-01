@@ -19,6 +19,14 @@ export CROSS_COMPILE="${CCACHE}aarch64-linux-gnu-"
 log "configuring kernel ($KERNEL_DEFCONFIG)"
 make -C "$KSRC" O="$KBUILD" "$KERNEL_DEFCONFIG"
 
+# Merge the optional per-device config fragment (devices/<codename>/kernel.config).
+FRAGMENT="$DEVICE_DIR/kernel.config"
+if [[ -f "$FRAGMENT" ]]; then
+    log "merging device kernel config fragment: $FRAGMENT"
+    "$KSRC/scripts/kconfig/merge_config.sh" -m -O "$KBUILD" "$KBUILD/.config" "$FRAGMENT"
+    make -C "$KSRC" O="$KBUILD" olddefconfig
+fi
+
 log "compiling Image.gz + $KERNEL_DTB + modules"
 make -C "$KSRC" O="$KBUILD" -j"$(nproc)" Image.gz "$KERNEL_DTB" modules
 

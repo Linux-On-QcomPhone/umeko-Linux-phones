@@ -22,5 +22,8 @@ load_device() {
     source "$env_file"
     # shellcheck disable=SC1091
     source "$REPO_ROOT/config/base.env"
+    # Per-device customization directory (kernel fragment, rootfs overlay,
+    # post-assemble hook). All entries are optional.
+    DEVICE_DIR="$REPO_ROOT/devices/$DEVICE_CODENAME"
     log "device: $DEVICE_NAME ($DEVICE_CODENAME, SoC $SOC)"
 }

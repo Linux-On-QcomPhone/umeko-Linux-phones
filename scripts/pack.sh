@@ -16,6 +16,17 @@ STAGE="$BUILD_DIR/pack"
 command -v mkbootimg >/dev/null || die "mkbootimg not installed"
 command -v img2simg  >/dev/null || die "img2simg not installed (android-sdk-libsparse-utils)"
 
+# Ubuntu 24.04's mkbootimg package ships /usr/bin/mkbootimg without the gki
+# python module it imports at startup (only used by --gki_signing_* options,
+# which we never pass). Install a stub so the tool runs.
+if ! mkbootimg --help >/dev/null 2>&1; then
+    warn "mkbootimg is broken (missing gki module), installing a stub"
+    sudo mkdir -p /usr/lib/python3/dist-packages/gki
+    printf 'def generate_gki_certificate(*args, **kwargs):\n    raise NotImplementedError("gki signing not available")\n' \
+        | sudo tee /usr/lib/python3/dist-packages/gki/generate_gki_certificate.py >/dev/null
+    : | sudo tee /usr/lib/python3/dist-packages/gki/__init__.py >/dev/null
+fi
+
 rm -rf "$STAGE"
 mkdir -p "$STAGE" "$OUT_DIR"
 

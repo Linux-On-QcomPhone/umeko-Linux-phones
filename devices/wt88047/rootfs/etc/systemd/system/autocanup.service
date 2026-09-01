@@ -1,0 +1,12 @@
+[Unit]
+Description=Automatic Startup canbus
+After=moonraker.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/lib/umeko/auto_can_up.sh
+User=root
+# Group=root
+
+[Install]
+WantedBy=multi-user.target

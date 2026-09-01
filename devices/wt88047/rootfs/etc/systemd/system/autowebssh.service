@@ -1,0 +1,13 @@
+[Unit]
+Description=Automatic Startup webssh
+Requires=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/lib/umeko/auto_web_ssh.sh
+User=root
+# Group=root
+
+[Install]
+WantedBy=multi-user.target

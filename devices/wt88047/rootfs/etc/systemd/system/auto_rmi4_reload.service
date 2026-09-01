@@ -1,0 +1,12 @@
+[Unit]
+Description=Automatic Reload rmi4-module
+After=KlipperScreen.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/lib/umeko/auto_rmi4_reload.sh
+User=root
+# Group=root
+
+[Install]
+WantedBy=multi-user.target

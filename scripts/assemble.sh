@@ -21,6 +21,9 @@ mkdir -p "$MNT_DIR"
 
 mount_image() {
     sudo mount -o loop "$IMAGE" "$MNT_DIR"
+    # The image is still empty on a fresh build (tarball is extracted below),
+    # so create the bind-mount targets before mounting them.
+    sudo mkdir -p "$MNT_DIR/proc" "$MNT_DIR/sys" "$MNT_DIR/dev/pts"
     sudo mount --bind /proc "$MNT_DIR/proc"
     sudo mount --bind /sys "$MNT_DIR/sys"
     sudo mount --bind /dev "$MNT_DIR/dev"
@@ -72,12 +75,9 @@ printf '127.0.0.1\tlocalhost\n127.0.1.1\t$HOSTNAME\n' > /etc/hosts
 useradd -m -s /bin/bash -G sudo,audio,video $DEFAULT_USER
 echo '$DEFAULT_USER:$DEFAULT_PASSWORD' | chpasswd
 
-# serial consoles (UART + USB gadget serial)
+# serial consoles (UART etc.)
 $(for tty in $SERIAL_CONSOLES; do echo "systemctl enable serial-getty@$tty.service"; done)
 systemctl enable ssh.service
-
-# load the USB serial gadget at boot so ttyGS0 exists when plugged in
-echo g_serial > /etc/modules-load.d/gadget-serial.conf
 
 # build provenance
 cat > /etc/umeko-build-info <<INFO
@@ -99,6 +99,38 @@ sudo chroot "$MNT_DIR" bash /tmp/umeko-setup.sh
 log "installing kernel modules ($KREL)"
 sudo mkdir -p "$MNT_DIR/lib/modules"
 sudo cp -a "$MODDIR" "$MNT_DIR/lib/modules/"
+
+# --- device-specific customization (devices/<codename>/) --------------------
+# rootfs/ overlay: files copied verbatim into the rootfs (systemd units,
+# modprobe.d confs, helper scripts, ...).
+if [[ -d "$DEVICE_DIR/rootfs" ]]; then
+    log "installing device overlay ($DEVICE_DIR/rootfs)"
+    sudo cp -a "$DEVICE_DIR/rootfs/." "$MNT_DIR/"
+fi
+
+# Optional prebuilt binaries fetched at build time (pinned URL + sha256),
+# e.g. the webssh arm64 binary used by the autowebssh service.
+if [[ -n "${WEBSSH_URL:-}" ]]; then
+    WEBSSH_BIN="$CACHE_DIR/$(basename "$WEBSSH_URL")"
+    if [[ ! -f "$WEBSSH_BIN" ]]; then
+        log "downloading $WEBSSH_URL"
+        curl -fL --retry 3 -o "$WEBSSH_BIN" "$WEBSSH_URL"
+    fi
+    echo "${WEBSSH_SHA256:?WEBSSH_SHA256 must be set with WEBSSH_URL}  $WEBSSH_BIN" | sha256sum -c -
+    sudo install -D -m 755 "$WEBSSH_BIN" "$MNT_DIR/usr/local/lib/umeko/webssh"
+fi
+
+# post-assemble.sh: device hook executed inside the chroot after everything
+# above (enable services, build/install extra software, ...).
+if [[ -f "$DEVICE_DIR/post-assemble.sh" ]]; then
+    log "running device post-assemble hook in chroot"
+    sudo cp "$DEVICE_DIR/post-assemble.sh" "$MNT_DIR/tmp/umeko-device-setup.sh"
+    sudo chroot "$MNT_DIR" env \
+        DEVICE_CODENAME="$DEVICE_CODENAME" DEVICE_NAME="$DEVICE_NAME" \
+        SOC="$SOC" DEFAULT_USER="$DEFAULT_USER" \
+        bash /tmp/umeko-device-setup.sh
+    sudo rm -f "$MNT_DIR/tmp/umeko-device-setup.sh"
+fi
 
 # --- cleanup ----------------------------------------------------------------
 sudo rm -f "$MNT_DIR/usr/bin/qemu-aarch64-static" \

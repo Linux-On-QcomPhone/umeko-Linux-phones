@@ -1,0 +1,11 @@
+[Unit]
+Description=Automatic Filesystem Resize
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/umeko/auto_resize_script.sh
+User=root
+Group=root
+
+[Install]
+WantedBy=multi-user.target
