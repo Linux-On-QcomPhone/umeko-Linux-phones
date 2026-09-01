@@ -18,7 +18,7 @@ fi
 
 log "verifying tarball against official SHA256SUMS"
 curl -fsSL "$UBUNTU_BASE_SHA256SUMS_URL" -o "$CACHE_DIR/SHA256SUMS"
-( cd "$CACHE_DIR" && grep " $(basename "$TARBALL")\$" SHA256SUMS | sha256sum -c - )
+( cd "$CACHE_DIR" && grep "$(basename "$TARBALL")\$" SHA256SUMS | sed 's/ \*/  /' | sha256sum -c - )
 
 IMAGE="$BUILD_DIR/rootfs.img"
 if [[ ! -f "$IMAGE" ]]; then
