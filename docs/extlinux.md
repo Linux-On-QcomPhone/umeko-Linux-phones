@@ -45,10 +45,13 @@ pmOS 的 msm8916 通用设备包就有这条路线的官方实现
 
 ## 我们的打包方案
 
-`scripts/pack_extlinux.sh`（与 `pack.sh` 同接口）：
+`scripts/pack_extlinux.sh`（与 `pack.sh` 同接口，支持多机型）：
 
 ```bash
+# 单机型
 PACK_VERSION=test scripts/pack_extlinux.sh devices/wt88047.env
+# 合并包：一个包同时支持红米2 和 vivo Y23L
+PACK_VERSION=test scripts/pack_extlinux.sh devices/wt88047.env devices/vivo-y23l.env
 ```
 
 产物布局（红米2 wt88047，system 分区在默认方案中闲置，正好利用）：
@@ -59,16 +62,40 @@ system   <- bootfs.img          （64MB 纯 ext2，mke2fs -t ext2 -d 生成）
 userdata <- rootfs.img          （sparse ext4，与默认方案相同）
 ```
 
-`bootfs.img` 内容：
+多机型合并包的 `bootfs.img` 内容：
 
 ```
-/extlinux/extlinux.conf     # default umeko; linux /Image.gz; fdt /dtbs/qcom/...; append <cmdline>
+/extlinux/extlinux.conf     # default umeko; linux /Image.gz; fdtdir /dtbs; append <cmdline>
 /Image.gz                   # 内核（gzip，lk2nd 自动解压）
-/dtbs/qcom/msm8916-wingtech-wt88047.dtb
+/dtbs/qcom/msm8916-wingtech-wt88047.dtb    # 红米2
+/dtbs/qcom/msm8916-vivo-pd1419.dtb         # vivo Y23L
 ```
+
+`fdtdir /dtbs` 模式下，lk2nd/lk1st 根据自己的设备数据库识别机器型号，
+再到 `/dtbs/qcom/` 里挑对应的 dtb——所以一个包能通吃多台机器。
 
 已在构建容器内验证：镜像可正常挂载、无 extents 特性、内容与配置正确。
 **尚未在真机上验证启动。**
+
+## vivo Y23L（pd1419）的特殊情况
+
+Y23L 属于 vivo CDP 家族（pd1304/pd1403/pd1410/pd1419），lk2nd 设备数据库里有，
+dtb 文件名映射为 `msm8916-vivo-pd1419`。但这家族是 lk2nd 官方标注的
+"quirky" 设备：**原厂系统是 Android 4.4.4，aboot 只有 32 位，加载不了 64 位的
+lk2nd**，需要用 lk1st（一级引导，直接替换 aboot 分区）并同时替换 tz/hyp 固件。
+
+- lk1st 需按面板编译：Y23L 有 nt35510s 和 orise8012a 两种屏幕，
+  分别用 `LK2ND_DISPLAY=nt35510s_fwvga_cmd` / `orise8012a_fwvga_cmd` 构建
+  （本仓库 CI 尚未集成 lk1st 构建；本地构建方式见 lk2nd 源码
+  `lk2nd/device/dts/msm8916/msm8916-vivo-cdp-1.dts` 的注释）
+- 内核侧两个面板驱动（`panel-vivo-nt35510s` / `panel-vivo-orise8012a`）
+  由设备 patch 提供，已在合并包里编译为模块；lk1st/lk2nd 的 match-panel
+  机制会把 dtb 里的面板 compatible 改写成实际探测到的那颗
+- **tz/hyp 替换的具体来源和刷入流程尚未整理进本仓库**，刷机前请先确认
+  这一步骤（参考 msm8916-mainline 社区）
+
+合并包对 Y23L 的意义：OS 部分（内核 dtb、面板模块、rootfs）开箱即用，
+只有引导器这一步与红米2不同。
 
 ## 和 UEFI 路线的关系
 
@@ -79,6 +106,7 @@ extlinux 这套文件布局也可以直接复用，不算弯路。
 
 ## 待办
 
-- [ ] 真机刷入验证（刷 bootfs.img 到 system 分区）
-- [ ] 验证通过后：给 `pack.sh`/`pack_extlinux.sh` 加统一的 `PACK_METHOD` 开关，CI 出双包
+- [x] 多机型合并包（fdtdir，红米2 + vivo Y23L），CI 出包
+- [ ] 真机刷入验证（红米2：lk2nd + bootfs.img 刷 system 分区）
+- [ ] vivo Y23L：lk1st 构建接入 CI + tz/hyp 替换流程整理 + 真机验证
 - [ ] 评估在 extlinux 之上加 initramfs（做真正的开机自动扩容、LUKS 等）

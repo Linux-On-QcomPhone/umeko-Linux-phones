@@ -27,3 +27,28 @@ load_device() {
     DEVICE_DIR="$REPO_ROOT/devices/$DEVICE_CODENAME"
     log "device: $DEVICE_NAME ($DEVICE_CODENAME, SoC $SOC)"
 }
+
+# Collect per-device info for a multi-device invocation. Fills two indexed
+# arrays: DEVICE_DIRS (devices/<codename>/ per env) and DEVICE_DTBS (the
+# KERNEL_DTB of each env). The first env is the "base" one already loaded by
+# load_device; its other values (cmdline, UUID, hostname, ...) are used for
+# the shared artifacts.
+collect_devices() {
+    DEVICE_DIRS=()
+    DEVICE_DTBS=()
+    DEVICE_NAMES=()
+    DEVICE_CODES=()
+    local env code dtb dname
+    for env in "$@"; do
+        [[ -f "$env" ]] || die "device config not found: $env"
+        code="$(basename "$env" .env)"
+        [[ -d "$REPO_ROOT/devices/$code" ]] || die "device dir missing: devices/$code"
+        dtb="$(bash -c 'source "$1" >/dev/null 2>&1; echo "${KERNEL_DTB:-}"' _ "$(realpath "$env")")"
+        [[ -n "$dtb" ]] || die "KERNEL_DTB missing in $env"
+        dname="$(bash -c 'source "$1" >/dev/null 2>&1; echo "${DEVICE_NAME:-}"' _ "$(realpath "$env")")"
+        DEVICE_DIRS+=("$REPO_ROOT/devices/$code")
+        DEVICE_DTBS+=("$dtb")
+        DEVICE_NAMES+=("${dname:-$code}")
+        DEVICE_CODES+=("$code")
+    done
+}

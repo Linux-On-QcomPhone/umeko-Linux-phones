@@ -15,6 +15,9 @@ concurrency:
 
 env:
   DEVICE_ENV: devices/wt88047.env
+  # Combined extlinux package: one kernel/rootfs serving all listed devices
+  # (fdtdir boot; lk2nd/lk1st picks the dtb per device).
+  DEVICE_ENVS_EXTLINUX: devices/wt88047.env devices/vivo-y23l.env
   PACK_VERSION: ${{ github.ref_name }}
 
 jobs:
@@ -74,16 +77,19 @@ jobs:
           key: ubuntu-base-24.04.3-arm64
 
       - name: Build kernel
-        run: ./scripts/build_kernel.sh "$DEVICE_ENV"
+        run: ./scripts/build_kernel.sh $DEVICE_ENVS_EXTLINUX
 
       - name: Build rootfs image
         run: ./scripts/build_rootfs.sh "$DEVICE_ENV"
 
       - name: Assemble rootfs (chroot)
-        run: ./scripts/assemble.sh "$DEVICE_ENV"
+        run: ./scripts/assemble.sh $DEVICE_ENVS_EXTLINUX
 
       - name: Pack flashing bundle
         run: ./scripts/pack.sh "$DEVICE_ENV"
+
+      - name: Pack extlinux bundle (experimental, multi-device)
+        run: ./scripts/pack_extlinux.sh $DEVICE_ENVS_EXTLINUX
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

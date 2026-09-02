@@ -2,7 +2,10 @@
 # Assemble the rootfs: extract ubuntu-base into the ext4 image, configure the
 # system inside a qemu-aarch64 chroot (packages, locale, user, consoles),
 # and install the kernel modules built by build_kernel.sh.
-# Usage: scripts/assemble.sh devices/wt88047.env
+# Usage: scripts/assemble.sh devices/<a>.env [devices/<b>.env ...]
+# With multiple devices, every device's rootfs overlay and post-assemble hook
+# is applied (shared rootfs for the combined extlinux package); the first env
+# provides the base system configuration.
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 load_device "$@"
@@ -101,12 +104,17 @@ sudo mkdir -p "$MNT_DIR/lib/modules"
 sudo cp -a "$MODDIR" "$MNT_DIR/lib/modules/"
 
 # --- device-specific customization (devices/<codename>/) --------------------
-# rootfs/ overlay: files copied verbatim into the rootfs (systemd units,
-# modprobe.d confs, helper scripts, ...).
-if [[ -d "$DEVICE_DIR/rootfs" ]]; then
-    log "installing device overlay ($DEVICE_DIR/rootfs)"
-    sudo cp -a "$DEVICE_DIR/rootfs/." "$MNT_DIR/"
-fi
+# Multi-device builds apply every device's overlay/hook in command-line order
+# (the combined extlinux package shares one rootfs across devices).
+collect_devices "$@"
+for dir in "${DEVICE_DIRS[@]}"; do
+    # rootfs/ overlay: files copied verbatim into the rootfs (systemd units,
+    # modprobe.d confs, helper scripts, ...).
+    if [[ -d "$dir/rootfs" ]]; then
+        log "installing device overlay ($dir/rootfs)"
+        sudo cp -a "$dir/rootfs/." "$MNT_DIR/"
+    fi
+done
 
 # Optional prebuilt binaries fetched at build time (pinned URL + sha256),
 # e.g. the webssh arm64 binary used by the autowebssh service.
@@ -122,15 +130,18 @@ fi
 
 # post-assemble.sh: device hook executed inside the chroot after everything
 # above (enable services, build/install extra software, ...).
-if [[ -f "$DEVICE_DIR/post-assemble.sh" ]]; then
-    log "running device post-assemble hook in chroot"
-    sudo cp "$DEVICE_DIR/post-assemble.sh" "$MNT_DIR/tmp/umeko-device-setup.sh"
-    sudo chroot "$MNT_DIR" env \
-        DEVICE_CODENAME="$DEVICE_CODENAME" DEVICE_NAME="$DEVICE_NAME" \
-        SOC="$SOC" DEFAULT_USER="$DEFAULT_USER" \
-        bash /tmp/umeko-device-setup.sh
-    sudo rm -f "$MNT_DIR/tmp/umeko-device-setup.sh"
-fi
+for i in "${!DEVICE_DIRS[@]}"; do
+    dir="${DEVICE_DIRS[$i]}"
+    if [[ -f "$dir/post-assemble.sh" ]]; then
+        log "running device post-assemble hook in chroot (${DEVICE_NAMES[$i]})"
+        sudo cp "$dir/post-assemble.sh" "$MNT_DIR/tmp/umeko-device-setup.sh"
+        sudo chroot "$MNT_DIR" env \
+            DEVICE_CODENAME="$(basename "$dir")" DEVICE_NAME="${DEVICE_NAMES[$i]}" \
+            SOC="$SOC" DEFAULT_USER="$DEFAULT_USER" \
+            bash /tmp/umeko-device-setup.sh
+        sudo rm -f "$MNT_DIR/tmp/umeko-device-setup.sh"
+    fi
+done
 
 # --- cleanup ----------------------------------------------------------------
 sudo rm -f "$MNT_DIR/usr/bin/qemu-aarch64-static" \

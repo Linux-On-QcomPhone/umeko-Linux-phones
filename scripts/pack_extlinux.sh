@@ -2,25 +2,32 @@
 # EXPERIMENTAL: alternative to pack.sh — boot via lk2nd + extlinux.conf
 # instead of an Android boot.img (no mkbootimg involved).
 #
+# Usage: PACK_VERSION=v1.0 scripts/pack_extlinux.sh devices/<a>.env [devices/<b>.env ...]
+#
+# With multiple devices, all their dtbs are shipped under /dtbs/ and the
+# extlinux.conf uses "fdtdir /dtbs": lk2nd/lk1st picks the right dtb for the
+# device from its own device database at boot. One package serves the set.
+#
 # Layout produced (pmOS "kernel-extlinux" style):
 #   boot     <- lk2nd-msm8916.img   (stock fastboot, once)
-#   system   <- bootfs.img          (ext2: /extlinux/extlinux.conf + kernel + dtb)
+#   system   <- bootfs.img          (ext2: /extlinux/extlinux.conf + kernel + dtbs)
 #   userdata <- rootfs.img          (sparse ext4, unchanged)
 #
 # lk2nd scans every partition >= 16MiB (plus boot at +512KiB) for an ext2
 # filesystem containing /extlinux/extlinux.conf and boots the default label.
 # NOTE: lk2nd's ext2 driver has no extents support, so the boot fs MUST be
 # plain ext2 (mke2fs -t ext2), not ext4.
-#
-# Usage: PACK_VERSION=v1.0 scripts/pack_extlinux.sh devices/wt88047.env
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
-load_device "$@"
+[[ $# -ge 1 ]] || die "usage: $0 devices/<codename>.env [more.env ...]"
+load_device "$1"
+collect_devices "$@"
 
 KBUILD="$BUILD_DIR/kernel"
 KREL="$(cat "$BUILD_DIR/kernelrelease")"
 PKG_VERSION="${PACK_VERSION:-$(date +%Y%m%d)}"
-PKG_NAME="umeko-${DEVICE_CODENAME}-ubuntu24.04-${PKG_VERSION}-extlinux"
+DEVS_JOINED="$(IFS=+; echo "${DEVICE_CODES[*]}")"
+PKG_NAME="umeko-${DEVS_JOINED}-ubuntu24.04-${PKG_VERSION}-extlinux"
 STAGE="$BUILD_DIR/pack-extlinux"
 BOOTFS_SIZE_MB=64
 
@@ -29,21 +36,33 @@ command -v mke2fs   >/dev/null || die "mke2fs not installed (e2fsprogs)"
 command -v img2simg >/dev/null || die "img2simg not installed (android-sdk-libsparse-utils)"
 
 rm -rf "$STAGE"
-mkdir -p "$STAGE/root/extlinux" "$STAGE/root/dtbs/qcom" "$OUT_DIR"
+mkdir -p "$STAGE/root/extlinux" "$OUT_DIR"
 
 # --- bootfs contents ----------------------------------------------------------
-log "staging extlinux boot filesystem"
+log "staging extlinux boot filesystem (${DEVS_JOINED})"
 cp "$KBUILD/arch/arm64/boot/Image.gz" "$STAGE/root/"
-cp "$KBUILD/arch/arm64/boot/dts/$KERNEL_DTB" "$STAGE/root/dtbs/$KERNEL_DTB"
+for dtb in "${DEVICE_DTBS[@]}"; do
+    mkdir -p "$STAGE/root/dtbs/$(dirname "$dtb")"
+    cp "$KBUILD/arch/arm64/boot/dts/$dtb" "$STAGE/root/dtbs/$dtb"
+done
+
+# With a single device, pin the dtb explicitly; with several, let lk2nd pick
+# via its device database (fdtdir lookup tries <dir>/qcom/<name>.dtb first,
+# which matches our layout).
+if [[ ${#DEVICE_DTBS[@]} -eq 1 ]]; then
+    FDT_LINE="fdt /dtbs/${DEVICE_DTBS[0]}"
+else
+    FDT_LINE="fdtdir /dtbs"
+fi
 
 cat > "$STAGE/root/extlinux/extlinux.conf" <<EOF
 timeout 1
-menu title umeko Linux ($DEVICE_NAME)
+menu title umeko Linux (${DEVS_JOINED})
 default umeko
 
 label umeko
     linux /Image.gz
-    fdt /dtbs/$KERNEL_DTB
+    $FDT_LINE
     append $KERNEL_CMDLINE
 EOF
 
@@ -54,6 +73,9 @@ mke2fs -q -t ext2 -L umeko-boot -d "$STAGE/root" "$STAGE/bootfs.img"
 rm -rf "$STAGE/root"
 
 # --- lk2nd (official prebuilt, checksum-verified) ------------------------------
+# NOTE: valid for wt88047 and other non-quirky devices. vivo Y23L (pd1419) is
+# a "quirky" vivo CDP device (32-bit stock aboot) and needs lk1st + replaced
+# tz/hyp instead — see docs/extlinux.md.
 log "downloading lk2nd ${LK2ND_VERSION}"
 LK2ND_IMG="$STAGE/lk2nd-${SOC}.img"
 curl -fL --retry 3 -o "$LK2ND_IMG" "$LK2ND_URL"
@@ -68,7 +90,7 @@ LK2ND_FILE="$(basename "$LK2ND_IMG")"
 
 cat > "$STAGE/flash.sh" <<EOF
 #!/usr/bin/env bash
-# Flash umeko Linux ($DEVICE_NAME / $DEVICE_CODENAME), extlinux variant.
+# Flash umeko Linux (${DEVS_JOINED}), extlinux variant.
 set -euo pipefail
 echo "[1/4] Flashing lk2nd bootloader (stock fastboot)..."
 fastboot flash boot $LK2ND_FILE || fastboot flash:raw boot $LK2ND_FILE
@@ -107,9 +129,13 @@ echo Done. First boot takes a while; log in as '$DEFAULT_USER' / '$DEFAULT_PASSW
 pause
 EOF
 
-cat > "$STAGE/BUILD-INFO.txt" <<EOF
-package:  $PKG_NAME  (EXPERIMENTAL extlinux boot)
-device:   $DEVICE_NAME ($DEVICE_CODENAME), SoC $SOC
+{
+    echo "package:  $PKG_NAME  (EXPERIMENTAL extlinux boot)"
+    for i in "${!DEVICE_DIRS[@]}"; do
+        echo "device:   ${DEVICE_NAMES[$i]} ($(basename "${DEVICE_DIRS[$i]}")), dtb ${DEVICE_DTBS[$i]}"
+    done
+    cat <<EOF
+soc:      $SOC
 kernel:   $KREL (msm8916-mainline/linux)
 cmdline:  $KERNEL_CMDLINE
 lk2nd:    $LK2ND_VERSION ($LK2ND_URL)
@@ -118,12 +144,13 @@ built:    $(date -u +%Y-%m-%dT%H:%M:%SZ)
 
 Flashing layout (extlinux variant):
   boot     <- $LK2ND_FILE   (once, from the stock bootloader)
-  system   <- bootfs.img    (ext2: /extlinux/extlinux.conf + Image.gz + dtb)
+  system   <- bootfs.img    (ext2: /extlinux/extlinux.conf + Image.gz + dtbs)
   userdata <- rootfs.img    (sparse ext4)
 
 Login: $DEFAULT_USER / $DEFAULT_PASSWORD
 Consoles: screen (tty0), UART ($SERIAL_CONSOLES), USB gadget serial (ttyGS0), SSH
 EOF
+} > "$STAGE/BUILD-INFO.txt"
 
 log "packing $PKG_NAME.zip"
 ( cd "$STAGE" && zip -q -9 -r "$OUT_DIR/$PKG_NAME.zip" . )

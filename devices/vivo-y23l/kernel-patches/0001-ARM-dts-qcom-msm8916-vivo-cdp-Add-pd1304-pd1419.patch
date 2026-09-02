@@ -1,0 +1,624 @@
+From af3c7bbf2fa435dabb757bd293fa87b3882a77c3 Mon Sep 17 00:00:00 2001
+From: Tikily <1606320261@qq.com>
+Date: Fri, 24 Jul 2026 18:04:38 +0800
+Subject: [PATCH 1/2] ARM: dts: qcom: msm8916-vivo-cdp: Add pd1304 pd1419
+
+---
+ arch/arm64/boot/dts/qcom/Makefile             |   2 +
+ .../arm64/boot/dts/qcom/msm8916-vivo-cdp.dtsi | 330 ++++++++++++++++++
+ .../boot/dts/qcom/msm8916-vivo-pd1304.dts     | 122 +++++++
+ .../boot/dts/qcom/msm8916-vivo-pd1419.dts     | 123 +++++++
+ 4 files changed, 577 insertions(+)
+ create mode 100644 arch/arm64/boot/dts/qcom/msm8916-vivo-cdp.dtsi
+ create mode 100644 arch/arm64/boot/dts/qcom/msm8916-vivo-pd1304.dts
+ create mode 100644 arch/arm64/boot/dts/qcom/msm8916-vivo-pd1419.dts
+
+diff --git a/arch/arm64/boot/dts/qcom/Makefile b/arch/arm64/boot/dts/qcom/Makefile
+index cf02e8364..599d44c48 100644
+--- a/arch/arm64/boot/dts/qcom/Makefile
++++ b/arch/arm64/boot/dts/qcom/Makefile
+@@ -66,6 +66,8 @@ dtb-$(CONFIG_ARCH_QCOM)	+= msm8916-samsung-serranove.dtb
+ dtb-$(CONFIG_ARCH_QCOM)	+= msm8916-thwc-uf896.dtb
+ dtb-$(CONFIG_ARCH_QCOM)	+= msm8916-thwc-ufi001c.dtb
+ dtb-$(CONFIG_ARCH_QCOM)	+= msm8916-vivo-y21l.dtb
++dtb-$(CONFIG_ARCH_QCOM)	+= msm8916-vivo-pd1304.dtb
++dtb-$(CONFIG_ARCH_QCOM)	+= msm8916-vivo-pd1419.dtb
+ dtb-$(CONFIG_ARCH_QCOM)	+= msm8916-wingtech-wt86518.dtb
+ dtb-$(CONFIG_ARCH_QCOM)	+= msm8916-wingtech-wt86528.dtb
+ dtb-$(CONFIG_ARCH_QCOM)	+= msm8916-wingtech-wt88047.dtb
+diff --git a/arch/arm64/boot/dts/qcom/msm8916-vivo-cdp.dtsi b/arch/arm64/boot/dts/qcom/msm8916-vivo-cdp.dtsi
+new file mode 100644
+index 000000000..64fa537ac
+--- /dev/null
++++ b/arch/arm64/boot/dts/qcom/msm8916-vivo-cdp.dtsi
+@@ -0,0 +1,330 @@
++// SPDX-License-Identifier: GPL-2.0-only
++
++/dts-v1/;
++
++#include "msm8916-pm8916.dtsi"
++#include "msm8916-modem-qdsp6.dtsi"
++
++#include <dt-bindings/gpio/gpio.h>
++#include <dt-bindings/input/input.h>
++#include <dt-bindings/leds/common.h>
++#include <dt-bindings/pinctrl/qcom,pmic-gpio.h>
++#include <dt-bindings/pinctrl/qcom,pmic-mpp.h>
++#include <dt-bindings/power/summit,smb347-charger.h>
++
++
++/ {
++	aliases {
++		mmc0 = &sdhc_1; /* eMMC */
++		mmc1 = &sdhc_2; /* SD card */
++		serial0 = &blsp_uart2;
++	};
++	
++	chosen {
++		stdout-path = "serial0";
++	};
++
++	backlight: backlight {
++		compatible = "pwm-backlight";
++		pwms = <&pm8916_pwm 0 100000>;
++
++		brightness-levels = <0 255>;
++		num-interpolated-steps = <255>;
++		default-brightness-level = <64>;
++
++		pinctrl-names = "default";
++		pinctrl-0 = <&lcd_bl_en_default>;
++		enable-gpios = <&tlmm 8 GPIO_ACTIVE_HIGH>;
++		post-pwm-on-delay-ms = <10>;
++		pwm-off-delay-ms = <10>;
++	};
++
++	gpio-keys {
++		compatible = "gpio-keys";
++
++		pinctrl-names = "default";
++		pinctrl-0 = <&gpio_keys_default>;
++
++		label = "GPIO Buttons";
++
++		button-volume-up {
++			label = "Volume Up";
++			gpios = <&tlmm 107 GPIO_ACTIVE_LOW>;
++			linux,code = <KEY_VOLUMEUP>;
++			debounce-interval = <15>;
++		};
++	};
++
++	usb_id: usb-id {
++		compatible = "linux,extcon-usb-gpio";
++		id-gpios = <&tlmm 110 GPIO_ACTIVE_HIGH>;
++		pinctrl-names = "default";
++		pinctrl-0 = <&usb_id_default>;
++	};
++
++	reserved-memory{
++		splash_region{
++			reg=<0x0 0x83000000 0x0 0x1400000>;
++			no-map;
++		};
++
++	};
++
++	
++};
++
++&blsp_i2c2 {
++	status = "okay";
++
++	accelerometer@18 {
++		compatible = "st,lis3dh-accel";
++		reg = <0x18>;
++		vdd-supply = <&pm8916_l17>;
++		vddio-supply = <&pm8916_l6>;
++		interrupts-extended = <&tlmm 21 IRQ_TYPE_EDGE_RISING>;
++	};
++	
++	light-sensor@39 {
++		compatible = "amstaos,tmd2772";
++		reg = <0x39>;
++		interrupts-extended = <&tlmm 113 IRQ_TYPE_EDGE_FALLING>;
++		vdd-supply = <&pm8916_l17>;
++		vddio-supply = <&pm8916_l6>;
++		pinctrl-0 = <&light_int_default>;
++		pinctrl-names = "default";
++	};
++
++};
++
++
++
++&blsp_i2c5 {
++	status = "okay";
++	
++	goodix: touchscreen@14 {
++		compatible = "goodix,gt928";
++		reg = <0x14>;
++
++		pinctrl-0 =  <&ts_int_active_default &ts_int_suspend_default>;
++		pinctrl-names = "default";
++		interrupt-parent = <&tlmm>;
++		interrupts = <13 IRQ_TYPE_LEVEL_LOW>;
++		irq-gpios = <&tlmm 13 GPIO_ACTIVE_LOW>;
++		reset-gpios = <&tlmm 12 GPIO_ACTIVE_LOW>;
++
++		AVDD28-supply = <&pm8916_l16>;
++		vdd-supply =  <&pm8916_l16>;
++
++		status = "disable";
++
++	};
++
++	
++	edt: touchscreen@38 {
++		compatible = "edt,edt-ft5306";
++		reg = <0x38>;
++
++		pinctrl-0 = <&ts_int_active_default &ts_int_suspend_default>; 
++		pinctrl-names = "default";
++		interrupt-parent = <&tlmm>;
++		interrupts = <13 IRQ_TYPE_EDGE_FALLING>;
++		reset-gpios = <&tlmm 12 GPIO_ACTIVE_LOW>;
++
++		vcc-supply = <&pm8916_l16>;
++		iovcc-supply = <&pm8916_l6>;
++		touchscreen-size-x = <480>;
++		touchscreen-size-y = <854>;
++
++		status = "disable";
++	};
++	
++};
++
++&blsp_uart2 {
++	status = "okay";
++};
++
++&pm8916_resin {
++	linux,code = <KEY_VOLUMEDOWN>;
++	status = "okay";
++};
++
++&gpu {
++	status = "okay";
++};
++
++&mdss {
++	status = "okay";
++};
++
++&mdss_dsi0 {
++	pinctrl-0 = <&mdss_default>;
++	pinctrl-1 = <&mdss_sleep>;
++	pinctrl-names = "default", "sleep";
++
++	panel: panel@0 {
++	
++		reg = <0>;
++
++		backlight = <&backlight>;
++		vdd-supply = <&pm8916_l10>;
++		vddio-supply = <&pm8916_l6>;
++
++		reset-gpios = <&tlmm 25 GPIO_ACTIVE_LOW>;
++
++		port {
++			panel_in: endpoint {
++				remote-endpoint = <&mdss_dsi0_out>;
++			};
++		};
++	};
++};
++
++&mdss_dsi0_out {
++	data-lanes = <0 1>;
++	remote-endpoint = <&panel_in>;
++};
++
++&mdss_dsi0_phy {
++	qcom,dsi-phy-regulator-ldo-mode;
++};
++
++&pm8916_pwm {
++	status = "okay";
++	pinctrl-names = "default";
++	pinctrl-0 = <&pwm_out>;
++};
++
++&pm8916_rpm_regulators {
++	pm8916_l10: l10 {
++		regulator-min-microvolt = <2700000>;
++		regulator-max-microvolt = <2800000>;
++	};
++
++	pm8916_l16: l16 {
++		regulator-min-microvolt = <2850000>;
++		regulator-max-microvolt = <2850000>;
++	};
++
++	pm8916_l17: l17 {
++		regulator-min-microvolt = <2850000>;
++		regulator-max-microvolt = <2850000>;
++	};
++
++};
++
++&pm8916_vib {
++	status = "okay";
++};
++
++&sdhc_1 {
++	status = "okay";
++};
++
++&sdhc_2 {
++	status = "okay";
++
++
++};
++
++&mba_mem {
++	status = "disable";
++};
++
++&mpss {
++	status = "disable";
++
++};
++
++&mpss_mem {
++	status = "disable";
++	reg = <0x0 0x86800000 0x0 0x4e00000>;
++};
++
++&usb {
++	status = "okay";
++	usb-role-switch;
++	extcon = <&usb_id>, <&usb_id>;
++	vbus-supply = <&usb_vbus>;
++};
++
++&usb_hs_phy {
++	extcon = <&usb_id>;
++};
++
++&venus {
++	status = "okay";
++};
++
++&venus_mem {
++	status = "okay";
++};
++
++&wcnss {
++	status = "okay";
++};
++
++&wcnss_iris {
++	compatible = "qcom,wcn3620";
++};
++
++&wcnss_mem {
++	status = "okay";
++};
++
++&tlmm {
++	gpio_keys_default: gpio-keys-default-state {
++		pins = "gpio107", "gpio117";
++		function = "gpio";
++
++		drive-strength = <2>;
++		bias-pull-up;
++	};
++
++	mdss_default: mdss-default-state {
++		pins = "gpio25";
++		function = "gpio";
++		drive-strength = <8>;
++		bias-disable = <0>;
++	};
++
++	mdss_sleep: mdss-sleep-state {
++		pins = "gpio25";
++		function = "gpio";
++		drive-strength = <2>;
++		bias-pull-down;
++	};
++
++	lcd_bl_en_default: lcd-bl-en-default-state {
++		pins = "gpio8";
++		function = "gpio";
++
++		drive-strength = <2>;
++		bias-disable;
++	};
++	
++	light_int_default: light-int-default-state {
++		pins = "gpio113";
++		function = "gpio";
++		drive-strength = <2>;
++		bias-disable;
++	};
++	
++	usb_id_default: usb-id-default-state {
++		pins = "gpio110";
++		function = "gpio";
++
++		drive-strength = <8>;
++		bias-pull-up;
++	};
++};
++
++&pm8916_mpps {
++	pwm_out: mpp4-state {
++		pins = "mpp4";
++		function = "digital";
++		power-source = <PM8916_MPP_VPH>;
++		output-low;
++		qcom,dtest = <1>;
++	};
++};
+diff --git a/arch/arm64/boot/dts/qcom/msm8916-vivo-pd1304.dts b/arch/arm64/boot/dts/qcom/msm8916-vivo-pd1304.dts
+new file mode 100644
+index 000000000..2171eb813
+--- /dev/null
++++ b/arch/arm64/boot/dts/qcom/msm8916-vivo-pd1304.dts
+@@ -0,0 +1,122 @@
++// SPDX-License-Identifier: GPL-2.0-only
++
++/dts-v1/;
++
++#include "msm8916-vivo-cdp.dtsi"
++
++
++
++/ {
++	model = "Vivo Y13L / Y613F /Y913";
++	compatible = "vivo,pd1304", "qcom,msm8916";
++	chassis-type = "handset";
++	
++	battery: battery-cell {
++		compatible = "simple-battery";
++		over-voltage-threshold-microvolt = <4380000>;
++		re-charge-voltage-microvolt = <3400000>;
++		voltage-min-design-microvolt = <3400000>;
++		voltage-max-design-microvolt = <4350000>;
++
++		precharge-current-microamp = <200000>;
++		precharge-upper-limit-microvolt = <3000000>;
++		constant-charge-current-max-microamp = <1800000>;
++		constant-charge-voltage-max-microvolt = <4350000>;
++		trickle-charge-current-microamp = <0>;
++
++		energy-full-design-microwatt-hours = <7220000>;
++		charge-full-design-microamp-hours = <1900000>;
++
++		ocv-capacity-celsius = <25>;
++		ocv-capacity-table-0 = <4300000 100>, <4250000 95>, <4204000 90>,
++			<4152000 85>, <4102000 80>, <4060000 75>, <3998000 70>,
++			<3964000 65>, <3924000 60>, <3874000 55>, <3842000 50>,
++			<3820000 45>, <3800000 40>, <3785000 35>, <3765000 30>,
++			<3758000 25>, <3735000 20>, <3706000 16>, <3690000 13>,
++			<3687000 11>, <3686000 10>, <3684000 9>, <3680000 8>,
++			<3668000 7>, <3640000 6>, <3596000 5>, <3542000 4>,
++			<3472000 3>, <3378000 2>, <3239000 1>, <3000000 0>;
++	};
++	
++
++};
++
++&blsp_i2c4 {
++	status = "okay";
++
++	charger: charger@57 {
++		compatible = "summit,smb358";
++		reg = <0x57>;
++
++		interrupt-parent = <&tlmm>;
++		interrupts = <62 IRQ_TYPE_LEVEL_LOW>;
++
++		pinctrl-names = "default";
++		pinctrl-0 = <&smb_int_default>;
++
++		summit,enable-charge-control = <SMB3XX_CHG_ENABLE_SW>;
++		summit,inok-polarity = <SMB3XX_SYSOK_INOK_ACTIVE_LOW>;
++		summit,fast-voltage-threshold-microvolt = <3000000>;
++		summit,chip-temperature-threshold-celsius = <100>;
++		summit,usb-current-limit-microamp = <500000>;
++		summit,charge-current-compensation-microamp = <200000>;
++		summit,enable-usb-charging;
++		summit,enable-otg-charging;
++
++		monitored-battery = <&battery>;
++
++		usb_vbus: usb-vbus {
++			regulator-name = "usb_vbus";
++			regulator-min-microvolt = <5000000>;
++			regulator-max-microvolt = <5000000>;
++			regulator-min-microamp = <750000>;
++			regulator-max-microamp = <750000>;
++			summit,needs-inok-toggle;
++		};
++	};
++};
++
++&edt{
++	touchscreen-size-x = <480>;
++	touchscreen-size-y = <854>;
++
++};
++
++&pm8916_bms {
++	monitored-battery = <&battery>;
++	status = "okay";
++};
++
++
++&panel {
++    compatible = "vivo,pd1304-panel"; 
++
++
++};
++
++&tlmm{
++
++    smb_int_default: smb-int-default-state {
++		pins = "gpio62";
++		function = "gpio";
++
++		drive-strength = <2>;
++		bias-disable;
++	};
++	
++	ts_int_active_default: ts-int-active-default-state {
++		pins = "gpio13";
++		function = "gpio";
++		drive-strength = <16>;
++		bias-pull-up;
++	};
++
++	ts_int_suspend_default: ts-int-suspend-default-state {
++		pins = "gpio13";
++		function = "gpio";
++		drive-strength = <2>;
++		bias-pull-down;
++	};
++
++
++};
+diff --git a/arch/arm64/boot/dts/qcom/msm8916-vivo-pd1419.dts b/arch/arm64/boot/dts/qcom/msm8916-vivo-pd1419.dts
+new file mode 100644
+index 000000000..e8bcb5b3e
+--- /dev/null
++++ b/arch/arm64/boot/dts/qcom/msm8916-vivo-pd1419.dts
+@@ -0,0 +1,123 @@
++// SPDX-License-Identifier: GPL-2.0-only
++
++/dts-v1/;
++
++#include "msm8916-vivo-cdp.dtsi"
++
++
++
++/ {
++	model = "Vivo Y23L / Y623 / Y923";
++	compatible = "vivo,pd1419", "qcom,msm8916";
++	chassis-type = "handset";
++	
++	battery: battery-cell {
++		compatible = "simple-battery";
++		over-voltage-threshold-microvolt = <4380000>;
++		re-charge-voltage-microvolt = <3400000>;
++		voltage-min-design-microvolt = <3400000>;
++		voltage-max-design-microvolt = <4350000>;
++
++		precharge-current-microamp = <200000>;
++		precharge-upper-limit-microvolt = <3000000>;
++		constant-charge-current-max-microamp = <1800000>;
++		constant-charge-voltage-max-microvolt = <4350000>;
++		trickle-charge-current-microamp = <0>;
++
++		energy-full-design-microwatt-hours = <7220000>;
++		charge-full-design-microamp-hours = <1900000>;
++
++		ocv-capacity-celsius = <25>;
++		ocv-capacity-table-0 = <4300000 100>, <4250000 95>, <4204000 90>,
++			<4152000 85>, <4102000 80>, <4060000 75>, <3998000 70>,
++			<3964000 65>, <3924000 60>, <3874000 55>, <3842000 50>,
++			<3820000 45>, <3800000 40>, <3785000 35>, <3765000 30>,
++			<3758000 25>, <3735000 20>, <3706000 16>, <3690000 13>,
++			<3687000 11>, <3686000 10>, <3684000 9>, <3680000 8>,
++			<3668000 7>, <3640000 6>, <3596000 5>, <3542000 4>,
++			<3472000 3>, <3378000 2>, <3239000 1>, <3000000 0>;
++	};
++	
++
++};
++
++&blsp_i2c4 {
++	status = "okay";
++
++	charger: charger@57 {
++		compatible = "summit,smb358";
++		reg = <0x57>;
++
++		interrupt-parent = <&tlmm>;
++		interrupts = <62 IRQ_TYPE_LEVEL_LOW>;
++
++		pinctrl-names = "default";
++		pinctrl-0 = <&smb_int_default>;
++
++		summit,enable-charge-control = <SMB3XX_CHG_ENABLE_SW>;
++		summit,inok-polarity = <SMB3XX_SYSOK_INOK_ACTIVE_LOW>;
++		summit,fast-voltage-threshold-microvolt = <3000000>;
++		summit,chip-temperature-threshold-celsius = <100>;
++		summit,usb-current-limit-microamp = <500000>;
++		summit,charge-current-compensation-microamp = <200000>;
++		summit,enable-usb-charging;
++		summit,enable-otg-charging;
++
++		monitored-battery = <&battery>;
++
++		usb_vbus: usb-vbus {
++			regulator-name = "usb_vbus";
++			regulator-min-microvolt = <5000000>;
++			regulator-max-microvolt = <5000000>;
++			regulator-min-microamp = <750000>;
++			regulator-max-microamp = <750000>;
++			summit,needs-inok-toggle;
++		};
++	};
++};
++
++&goodix{
++	touchscreen-size-x = <480>;
++	touchscreen-size-y = <854>;
++
++};
++
++
++&pm8916_bms {
++	monitored-battery = <&battery>;
++	status = "okay";
++};
++
++
++&panel {
++    compatible = "vivo,pd1419-panel"; 
++
++
++};
++
++&tlmm{
++
++    smb_int_default: smb-int-default-state {
++		pins = "gpio62";
++		function = "gpio";
++
++		drive-strength = <2>;
++		bias-disable;
++	};
++	
++	ts_int_active_default: ts-int-active-default-state {
++		pins = "gpio13";
++		function = "gpio";
++		drive-strength = <16>;
++		bias-pull-up;
++	};
++
++	ts_int_suspend_default: ts-int-suspend-default-state {
++		pins = "gpio13";
++		function = "gpio";
++		drive-strength = <2>;
++		bias-pull-down;
++	};
++
++
++};
+-- 
+2.47.3
+

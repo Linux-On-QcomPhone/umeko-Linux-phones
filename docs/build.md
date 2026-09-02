@@ -14,6 +14,10 @@ pack.sh           mkbootimg 出 boot.img、img2simg 出 sparse rootfs.img、下�
 ```
 
 所有脚本接受同一个参数：机型配置文件，如 `./scripts/build_kernel.sh devices/wt88047.env`。
+`build_kernel.sh` / `assemble.sh` / `pack_extlinux.sh` 还接受**多个机型配置**：
+每个机型的定制（patch、config 片段、overlay、钩子）都会叠加进同一份产物——
+这是 extlinux 合并包（一个包支持多台机器）的基础，第一个 env 提供共享基准配置
+（cmdline、rootfs UUID、主机名等）。
 
 ## 配置分层
 
@@ -29,6 +33,7 @@ devices/wt88047/           # 机型定制目录（全部可选，见下）
 | 文件/目录 | 何时被使用 | 作用 |
 | --- | --- | --- |
 | `kernel.config` | build_kernel.sh | 内核配置片段，defconfig 之后用内核自带的 `scripts/kconfig/merge_config.sh` 合并，再 `olddefconfig` |
+| `kernel-patches/` | build_kernel.sh | 内核补丁（`*.patch`，按文件名排序用 `git apply` 打进内核树，幂等；已应用的会跳过）。注意：打补丁会弄脏内核工作树，配合片段里 `# CONFIG_LOCALVERSION_AUTO is not set`（脚本同时导出空 `LOCALVERSION`）保证 kernelrelease 可复现 |
 | `rootfs/` | assemble.sh | overlay，原样拷入根文件系统。systemd unit 放 `rootfs/etc/systemd/system/`，脚本放 `rootfs/usr/local/lib/umeko/` |
 | `post-assemble.sh` | assemble.sh | 根文件系统组装完成后在 chroot 里执行的钩子：`systemctl enable …`、编译安装额外软件等。环境变量带 `DEVICE_CODENAME` `DEVICE_NAME` `SOC` `DEFAULT_USER` |
 
@@ -54,8 +59,9 @@ wt88047 的内核片段（`devices/wt88047/kernel.config`）在 msm8916_defconfi
 
 1. 复制 `devices/wt88047.env` 为 `devices/<codename>.env`，改 dtb、mkbootimg 参数、cmdline、rootfs UUID 等
 2. 如需不同 SoC 的内核，`git submodule add` 到 `kernels/`
-3. 按需创建 `devices/<codename>/`（kernel.config / rootfs overlay / post-assemble.sh）
-4. 在 `.github/workflows/build.yml` 把 `DEVICE_ENV` 改成 matrix 以并行构建多机型
+3. 按需创建 `devices/<codename>/`（kernel.config / kernel-patches/ / rootfs overlay / post-assemble.sh）
+4. 在 `.github/workflows/build.yml` 把 `DEVICE_ENV` 改成 matrix 以并行构建多机型；
+   同 SoC 的机型也可以加进 `DEVICE_ENVS_EXTLINUX` 出一个 extlinux 合并包（见 [extlinux 路线](extlinux.md)）
 
 ## boot.img 打包参数（mkbootimg）来源
 

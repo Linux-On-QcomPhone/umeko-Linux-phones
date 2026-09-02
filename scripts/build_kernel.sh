@@ -1,9 +1,17 @@
 #!/usr/bin/env bash
-# Build the kernel (Image.gz + device dtb + modules) for a device.
-# Usage: scripts/build_kernel.sh devices/wt88047.env
+# Build the kernel (Image.gz + device dtb(s) + modules) for one or more
+# devices.
+# Usage: scripts/build_kernel.sh devices/<a>.env [devices/<b>.env ...]
+#
+# With multiple devices, every device's kernel.config fragment and
+# kernel-patches/ series is applied to the same tree and all their dtbs are
+# built — one kernel serves the whole set (used by the combined extlinux
+# package). The first env provides the base configuration (defconfig etc.).
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
-load_device "$@"
+[[ $# -ge 1 ]] || die "usage: $0 devices/<codename>.env [more.env ...]"
+load_device "$1"
+collect_devices "$@"
 
 KSRC="$REPO_ROOT/$KERNEL_SUBMODULE"
 KBUILD="$BUILD_DIR/kernel"
@@ -15,20 +23,47 @@ command -v ccache >/dev/null && CCACHE="ccache "
 
 export ARCH=arm64
 export CROSS_COMPILE="${CCACHE}aarch64-linux-gnu-"
+# Keep kernelrelease reproducible when device patches are applied: with
+# CONFIG_LOCALVERSION_AUTO off, setlocalversion still appends "+" for a dirty
+# tree unless the LOCALVERSION env var is set (even empty). Pin it empty.
+export LOCALVERSION=""
+
+# Apply per-device kernel patches (devices/<codename>/kernel-patches/*.patch).
+# Idempotent: already-applied patches are skipped. The tree is intentionally
+# left dirty — pair with "# CONFIG_LOCALVERSION_AUTO is not set" in a fragment
+# to keep the kernelrelease reproducible.
+for dir in "${DEVICE_DIRS[@]}"; do
+    PDIR="$dir/kernel-patches"
+    [[ -d "$PDIR" ]] || continue
+    for p in "$PDIR"/*.patch; do
+        [[ -e "$p" ]] || continue
+        if git -C "$KSRC" apply --check "$p" 2>/dev/null; then
+            log "applying kernel patch: $(basename "$p")"
+            git -C "$KSRC" apply "$p"
+        elif git -C "$KSRC" apply -R --check "$p" 2>/dev/null; then
+            log "kernel patch already applied: $(basename "$p")"
+        else
+            die "kernel patch does not apply: $p"
+        fi
+    done
+done
 
 log "configuring kernel ($KERNEL_DEFCONFIG)"
 make -C "$KSRC" O="$KBUILD" "$KERNEL_DEFCONFIG"
 
-# Merge the optional per-device config fragment (devices/<codename>/kernel.config).
-FRAGMENT="$DEVICE_DIR/kernel.config"
-if [[ -f "$FRAGMENT" ]]; then
-    log "merging device kernel config fragment: $FRAGMENT"
-    "$KSRC/scripts/kconfig/merge_config.sh" -m -O "$KBUILD" "$KBUILD/.config" "$FRAGMENT"
+# Merge the per-device config fragments (devices/<codename>/kernel.config).
+FRAGMENTS=()
+for dir in "${DEVICE_DIRS[@]}"; do
+    [[ -f "$dir/kernel.config" ]] && FRAGMENTS+=("$dir/kernel.config")
+done
+if [[ ${#FRAGMENTS[@]} -gt 0 ]]; then
+    log "merging kernel config fragments: ${FRAGMENTS[*]}"
+    "$KSRC/scripts/kconfig/merge_config.sh" -m -O "$KBUILD" "$KBUILD/.config" "${FRAGMENTS[@]}"
     make -C "$KSRC" O="$KBUILD" olddefconfig
 fi
 
-log "compiling Image.gz + $KERNEL_DTB + modules"
-make -C "$KSRC" O="$KBUILD" -j"$(nproc)" Image.gz "$KERNEL_DTB" modules
+log "compiling Image.gz + dtbs (${DEVICE_DTBS[*]}) + modules"
+make -C "$KSRC" O="$KBUILD" -j"$(nproc)" Image.gz "${DEVICE_DTBS[@]}" modules
 
 log "installing modules to staging dir"
 rm -rf "$BUILD_DIR/modinst"
@@ -40,5 +75,7 @@ KREL="$(make -s -C "$KSRC" O="$KBUILD" kernelrelease)"
 echo "$KREL" > "$BUILD_DIR/kernelrelease"
 
 [[ -f "$KBUILD/arch/arm64/boot/Image.gz" ]] || die "Image.gz missing"
-[[ -f "$KBUILD/arch/arm64/boot/dts/$KERNEL_DTB" ]] || die "dtb missing: $KERNEL_DTB"
-log "kernel $KREL built OK"
+for dtb in "${DEVICE_DTBS[@]}"; do
+    [[ -f "$KBUILD/arch/arm64/boot/dts/$dtb" ]] || die "dtb missing: $dtb"
+done
+log "kernel $KREL built OK (dtbs: ${DEVICE_DTBS[*]})"
