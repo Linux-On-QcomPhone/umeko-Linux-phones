@@ -5,14 +5,14 @@
 
 | 机型 | codename | SoC | 打包方式 | 状态 |
 | --- | --- | --- | --- | --- |
-| [红米 2 (Redmi 2)](wt88047.md) | `wt88047` | MSM8916 | mkbootimg（默认）+ extlinux 合并包 | CI 出包，真机在用 |
-| [vivo Y23L](vivo-y23l.md) | `vivo-y23l` | MSM8916 | extlinux 合并包（需 lk1st 引导） | 实验性，待真机验证 |
+| [红米 2 (Redmi 2)](wt88047.md) | `wt88047` | MSM8916 | extlinux 合并包（默认；mkbootimg 为 legacy） | CI 出包，真机在用 |
+| [vivo Y23L](vivo-y23l.md) | `vivo-y23l` | MSM8916 | extlinux 合并包（需 lk1st 引导） | 真机已验证启动 |
 
 ## 状态标记说明
 
 - **CI 出包**：每次代码变更自动构建，artifact / release 可直接下载
 - **真机在用**：有真实设备刷入并日常使用验证
-- **实验性**：构建链路已验证，但真机启动流程（尤其是引导器）尚未完全打通
+- **真机已验证启动**：刷入后能正常启动到登录界面，更多外设逐项确认中
 
 ## 想加新机型？
 

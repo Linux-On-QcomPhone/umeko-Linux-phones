@@ -42,7 +42,7 @@ docker rm -f umeko-build                                          # 清掉缓存
 | `kmod` | `depmod`，生成 modules.dep |
 | `ccache` | 编译缓存 |
 | `qemu-user-static` | x86_64 上 chroot 进 arm64 rootfs 跑 apt/systemctl |
-| `mkbootimg` | 打 Android boot.img |
+| `mkbootimg` | 打 Android boot.img（legacy 路线 `pack.sh` 用） |
 | `android-sdk-libsparse-utils` | `img2simg`，转 fastboot 用的 sparse 镜像 |
 | `e2fsprogs` | `mkfs.ext4` 等 |
 | `zip curl ca-certificates git sudo python3` | 打包、下载校验、submodule、脚本运行环境 |
@@ -80,7 +80,7 @@ cd /work
 | `/work/build/kernel/` | 内核 O= 构建目录（`.config`、`Image.gz`、dtb） |
 | `/work/build/modinst/` | 内核 modules 安装暂存区 |
 | `/work/build/rootfs.img` | 组装完成的 ext4 根文件系统镜像（可 `mount -o loop` 进去检查） |
-| `/work/build/pack/` | 打包暂存区（boot.img、sparse rootfs.img、flash 脚本） |
+| `/work/build/pack/` | 打包暂存区（bootfs.img、sparse rootfs.img、flash 脚本） |
 | `/work/.cache/` | 下载缓存（ubuntu-base tarball、webssh） |
 
 ## 不用 Docker 的原生构建
@@ -92,8 +92,9 @@ sudo apt install gcc-aarch64-linux-gnu build-essential bc bison flex libssl-dev 
     libncurses-dev kmod ccache dwarves qemu-user-static mkbootimg \
     android-sdk-libsparse-utils e2fsprogs zip curl ca-certificates git sudo
 git submodule update --init --depth 1
-./scripts/build_kernel.sh  devices/wt88047.env
+./scripts/build_kernel.sh  devices/wt88047.env devices/vivo-y23l.env
 ./scripts/build_rootfs.sh  devices/wt88047.env
-./scripts/assemble.sh      devices/wt88047.env   # 需要 sudo（mount/chroot）
-./scripts/pack.sh          devices/wt88047.env
+./scripts/assemble.sh      devices/wt88047.env devices/vivo-y23l.env   # 需要 sudo（mount/chroot）
+./scripts/pack_extlinux.sh devices/wt88047.env devices/vivo-y23l.env   # 默认路线（合并包）
+# ./scripts/pack.sh        devices/wt88047.env                         # legacy 单机型包（mkbootimg）
 ```

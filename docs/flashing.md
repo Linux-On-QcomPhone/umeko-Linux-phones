@@ -10,8 +10,16 @@
 3. 运行包内脚本：Linux/macOS 用 `bash flash.sh`，Windows 双击 `flash.bat`
 4. 脚本分两个阶段，中间需要人工配合一次：
    - **阶段一**（原厂 fastboot）：刷入 `lk2nd-msm8916.img`，然后手机重启——**重启时按住音量下**，进入 lk2nd 自己的 fastboot 界面（屏幕上会有 lk2nd 字样和菜单），按回车继续
-   - **阶段二**（lk2nd fastboot）：刷入 `boot.img`（内核）和 `rootfs.img`（系统，700 多 MB sparse，耐心等）
+   - **阶段二**（lk2nd fastboot）：刷入 `bootfs.img`（ext2 启动分区，进 system 分区）和 `rootfs.img`（系统，sparse 格式，刷入 userdata，耐心等）
 5. 刷完自动重启进 Ubuntu。首次启动较慢（要生成 SSH host key 等），等一两分钟
+
+!!! note "vivo Y23L 不一样"
+    Y23L 需要先刷 lk1st 底包，且 bootfs 刷 boot 分区而非 system。完整流程见
+    [vivo Y23L 机型页](devices/vivo-y23l.md)。
+
+!!! note "legacy mkbootimg 包"
+    旧版单机型包（`boot.img` + `rootfs.img`，mkbootimg 打包）已不再由 CI 构建，
+    刷法类似：阶段二刷 `boot.img`（boot 分区）和 `rootfs.img`（userdata）。
 
 ## 首次登录
 

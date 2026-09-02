@@ -1,15 +1,14 @@
-# 可选路线：extlinux 启动（实验性）
+# extlinux 启动（默认路线）
 
-!!! warning "实验性功能"
-    本页描述的是一条**研究中的备选启动路线**，不是默认方案。
-    默认刷机包仍走 mkbootimg 的 Android boot.img 路线（见[构建系统详解](build.md)）。
+extlinux 是**默认且唯一由 CI 构建**的打包路线（mkbootimg 转为
+legacy，见下文对比）。红米 2 与 vivo Y23L 均已真机验证启动。
 
 ## 这是什么
 
-默认方案里，内核和 dtb 被 `mkbootimg` 打成一个 Android `boot.img`，刷到 boot 分区
+早期方案里，内核和 dtb 被 `mkbootimg` 打成一个 Android `boot.img`，刷到 boot 分区
 lk2nd 之后的 512KiB 偏移处。lk2nd 实际上还支持另一种更通用的启动方式：
 **直接扫描文件系统里的 `/extlinux/extlinux.conf`**（和 U-Boot、depthcharge 同款格式），
-按配置加载内核、dtb 和可选的 initramfs。
+按配置加载内核、dtb 和 initramfs。
 
 pmOS 的 msm8916 通用设备包就有这条路线的官方实现
 （`device-qcom-msm8916-kernel-extlinux`，"Use lk2nd to boot via extlinux.conf"）。
@@ -24,7 +23,8 @@ pmOS 的 msm8916 通用设备包就有这条路线的官方实现
 - 支持的指令：`label` / `default` / `linux`(=`kernel`) / `initrd` / `fdt` / `fdtdir` /
   `append` / `fdtoverlays`；总是启动 `default` 标签
 - 内核可以是 gzip 压缩的（自动解压，我们的 `Image.gz` 直接用）
-- `initrd` 可省略（我们现在就不用 initramfs）
+- `initrd` 可省略，但我们默认带 initramfs（`root=UUID=` 必须由 initramfs
+  里的 blkid/udev 解析，内核自己认不了 UUID）
 - `fdtdir` 模式下按设备数据库依次尝试 `<dir>/qcom/<name>.dtb`、`<dir>/qcom-<name>.dtb`、
   `<dir>/<name>.dtb`；也可以用 `fdt` 写死路径
 - **启动内存上限 50MiB**（内核解压后 + initramfs + dtb 共享，msm8916 无单独配置）
@@ -34,14 +34,14 @@ pmOS 的 msm8916 通用设备包就有这条路线的官方实现
 
 ## 与 mkbootimg 路线对比
 
-| | mkbootimg（现状） | extlinux（实验） |
+| | mkbootimg（legacy） | extlinux（默认） |
 | --- | --- | --- |
 | 内核/dtb 存放 | 打死在 boot.img 二进制里 | 文件系统里的普通文件 |
 | 改 cmdline/换内核 | 重新打包刷 boot 分区 | 进系统改文件/换文件即可 |
 | 多系统/多内核 | 不支持 | 天然支持（多个 label、多份内核） |
-| initramfs | 我们没有，加要改打包 | 加一行 `initrd` 即可 |
+| initramfs | 加要改打包 | 加一行 `initrd` 即可（默认带） |
 | 依赖 | mkbootimg（Ubuntu 24.04 包还是坏的，要打补丁） | 只需 mke2fs（e2fsprogs） |
-| 成熟度 | 已验证、CI 全绿 | 待真机验证 |
+| 成熟度 | 已验证，CI 不再自动构建 | 红米2 + vivo Y23L 真机验证通过 |
 
 ## 我们的打包方案
 
@@ -74,8 +74,8 @@ userdata <- rootfs.img          （sparse ext4，与默认方案相同）
 `fdtdir /dtbs` 模式下，lk2nd/lk1st 根据自己的设备数据库识别机器型号，
 再到 `/dtbs/qcom/` 里挑对应的 dtb——所以一个包能通吃多台机器。
 
-已在构建容器内验证：镜像可正常挂载、无 extents 特性、内容与配置正确。
-**尚未在真机上验证启动。**
+构建容器内验证过镜像可正常挂载、无 extents 特性、内容与配置正确；
+**红米 2 与 vivo Y23L 均已真机验证启动**（Y23L 截图见[机型页](devices/vivo-y23l.md)）。
 
 ## vivo Y23L（pd1419）的特殊情况
 
@@ -110,8 +110,8 @@ extlinux 这套文件布局也可以直接复用，不算弯路。
 - [x] Y23L 引导流程调研：底包（gpt/hyp/rpm/sbl1/tz/recovery）+ lk1st 刷 aboot
       + bootfs 刷 boot，参考 KlipperPhonesLinux vivo 刷机包；lk1st 两种面板
       版本已验证可用 tag 23.1 源码编译
-- [ ] 真机刷入验证（红米2：lk2nd + bootfs.img 刷 system 分区）
+- [x] 真机刷入验证：红米2（lk2nd + bootfs.img 刷 system 分区）与
+      vivo Y23L（lk1st + bootfs.img 刷 boot 分区）均已启动到登录界面
+- [x] extlinux 之上默认带 initramfs（`mkinitramfs` + zstd 生成，bootfs 固定
+      UUID 由机型 fstab 挂到 /boot；`root=UUID=` 依赖它解析）
 - [ ] vivo Y23L：lk1st 构建接入 CI（main 分支有生成头文件冲突，需钉 23.1）
-      + 真机验证
-- [ ] 评估在 extlinux 之上加 initramfs（做真正的开机自动扩容、LUKS 等；
-      参考包的 bootfs 就带 initrd，可对比学习）

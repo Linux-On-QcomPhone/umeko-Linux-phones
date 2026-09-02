@@ -4,10 +4,13 @@ vivo 2015 年的入门机（PD1419L / PD1419F / PD1419V，同平台还有 Y623 /
 与红米 2 同为 MSM8916，**OS 侧与红米 2 共享同一个 extlinux 合并包**，
 但引导器流程特殊（见下）。
 
-!!! warning "实验性"
-    内核设备树和面板驱动来自社区 patch（已并入本仓库
-    `devices/vivo-y23l/kernel-patches/`），构建链路已在容器验证，
-    **真机启动尚未验证**。
+!!! success "已真机验证"
+    extlinux 合并包已在真机启动到登录界面（截图见下）。内核设备树和面板驱动
+    来自社区 patch（已并入本仓库 `devices/vivo-y23l/kernel-patches/`）。
+
+![vivo Y23L 启动日志](../assets/images/vivo-y23l-boot.jpg)
+
+![vivo Y23L 登录界面](../assets/images/vivo-y23l-login.jpg)
 
 ## 硬件参数
 
@@ -74,10 +77,10 @@ panel compatible（match-panel），两种面板驱动都已在合并包内核�
 | 触摸屏 | 🧪 | gt928 / edt-ft5306 设备树已配 |
 | WiFi | 🧪 | WCN3620，固件提取服务与红米 2 共用 |
 | 充电/电量计 | 🧪 | SMB358 + pm8916 BMS，设备树已配 |
-| USB 串口控制台 | 🧪 | 与红米 2 相同（autottyGS0） |
+| USB 串口控制台 | ✅ | 与红米 2 相同（autottyGS0）；extcon 同时接 PMIC VBUS 检测与 ID GPIO，device 模式可用 |
 | 基带 | ❌ | 未做 |
 
-🧪 = 构建已验证，待真机确认。
+✅ = 真机确认可用；🧪 = 构建已验证，待真机确认。
 
 ## 构建
 
@@ -93,9 +96,13 @@ lk2nd/lk1st 开机扫描到 system 分区的 bootfs.img 后，按设备数据库
 机型定制内容（`devices/vivo-y23l/`）：
 
 - `kernel-patches/`：设备树（msm8916-vivo-cdp.dtsi + pd1419.dts + pd1304.dts）
-  和两个面板驱动（修正了上游 patch 中 pd1419 compatible 的笔误）
+  和两个面板驱动（修正了上游 patch 中 pd1419 compatible 的笔误；`&usb`
+  的 extcon 同时接 `pm8916_usbin`（VBUS 检测）和 `usb_id`（ID GPIO），
+  否则 ci_hdrc 拿不到 VBUS、USB device 模式不工作）
 - `kernel.config`：`CONFIG_DRM_PANEL_VIVO_NT35510S=m`、
   `CONFIG_DRM_PANEL_VIVO_ORISE8012A=m`
+- `post-assemble.sh`：写 fstab 行，把 bootfs（固定 UUID 的 ext2 启动分区）
+  开机自动挂载到 `/boot`，方便在系统里直接改 extlinux.conf / 换内核
 
 ## 链接
 

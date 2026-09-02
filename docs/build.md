@@ -5,12 +5,15 @@
 四个脚本按顺序组成完整流水线（CI 和本地都是同一套）：
 
 ```
-build_kernel.sh   交叉编译内核：Image.gz + 机型 dtb + 内核 modules
-build_rootfs.sh   下载 ubuntu-base tarball（sha256 校验）+ 创建固定 UUID 的空 ext4 镜像
-assemble.sh       挂载镜像 + qemu-aarch64 chroot：装包、建用户、locale、串口 console、
-                  装内核 modules、套用机型定制（overlay / 预置二进制 / post-assemble 钩子）
-pack.sh           mkbootimg 出 boot.img、img2simg 出 sparse rootfs.img、下载 lk2nd、
-                  生成 flash.sh/flash.bat 和 BUILD-INFO.txt，打 zip
+build_kernel.sh     交叉编译内核：Image.gz + 机型 dtb + 内核 modules
+build_rootfs.sh     下载 ubuntu-base tarball（sha256 校验）+ 创建固定 UUID 的空 ext4 镜像
+assemble.sh         挂载镜像 + qemu-aarch64 chroot：装包、建用户、locale、串口 console、
+                    装内核 modules、生成 initramfs、套用机型定制（overlay / 预置二进制 /
+                    post-assemble 钩子），可选编译安装 buffyboard（见下文）
+pack_extlinux.sh    默认打包路线：mke2fs 出纯 ext2 的 bootfs.img（extlinux.conf +
+                    Image.gz + initrd.img + 全机型 dtb）、img2simg 出 sparse rootfs.img、
+                    下载 lk2nd、生成 flash.sh/flash.bat 和 BUILD-INFO.txt，打 zip
+pack.sh             legacy 路线（CI 不再自动构建）：mkbootimg 出 boot.img 的单机型包
 ```
 
 所有脚本接受同一个参数：机型配置文件，如 `./scripts/build_kernel.sh devices/wt88047.env`。
@@ -35,7 +38,7 @@ devices/wt88047/           # 机型定制目录（全部可选，见下）
 | `kernel.config` | build_kernel.sh | 内核配置片段，defconfig 之后用内核自带的 `scripts/kconfig/merge_config.sh` 合并，再 `olddefconfig` |
 | `kernel-patches/` | build_kernel.sh | 内核补丁（`*.patch`，按文件名排序用 `git apply` 打进内核树，幂等；已应用的会跳过）。注意：打补丁会弄脏内核工作树，配合片段里 `# CONFIG_LOCALVERSION_AUTO is not set`（脚本同时导出空 `LOCALVERSION`）保证 kernelrelease 可复现 |
 | `rootfs/` | assemble.sh | overlay，原样拷入根文件系统。systemd unit 放 `rootfs/etc/systemd/system/`，脚本放 `rootfs/usr/local/lib/umeko/` |
-| `post-assemble.sh` | assemble.sh | 根文件系统组装完成后在 chroot 里执行的钩子：`systemctl enable …`、编译安装额外软件等。环境变量带 `DEVICE_CODENAME` `DEVICE_NAME` `SOC` `DEFAULT_USER` |
+| `post-assemble.sh` | assemble.sh | 根文件系统组装完成后在 chroot 里执行的钩子：`systemctl enable …`、编译安装额外软件等。环境变量带 `DEVICE_CODENAME` `DEVICE_NAME` `SOC` `DEFAULT_USER` `BOOTFS_UUID` |
 
 wt88047 的内核片段（`devices/wt88047/kernel.config`）在 msm8916_defconfig 基础上打开了：内置 g_serial（ttyGS0 USB 串口控制台）、CAN + gs_usb（USB CAN 适配器）、RNDIS host、FRAMEBUFFER_CONSOLE（屏幕控制台）。这些参考自 KlipperPhonesLinux 广受好评的红米2 刷机包所用的内核配置。
 
@@ -43,10 +46,33 @@ wt88047 的内核片段（`devices/wt88047/kernel.config`）在 msm8916_defconfi
 
 - **触发**：push 到 `main` 且改动涉及代码（`scripts/` `devices/` `config/` `kernels/` 等，由前置 `changes` job 用 `git diff` 门控——纯文档变更不构建）或手动触发 → 构建并上传 artifact（保留 14 天）；push `v*` tag → 始终构建并发布 GitHub Release（tag 不受路径过滤影响）
 - **环境**：`ubuntu-24.04` runner，依赖安装清单与 [Dockerfile](docker.md) 一致
+- **产物**：只出 extlinux 合并包（`DEVICE_ENVS_EXTLINUX`：红米2 + vivo Y23L）；mkbootimg 单机型包（`pack.sh`）已转 legacy，CI 不再构建，需要时本地跑
+- **buffyboard**：CI 上 `BUFFYBOARD=0`，只构建 base 包（qemu 下编译 buffyboard 太慢），开关见下文
 - **缓存**：
   - ccache（key `kernel-wt88047`）——第二次起内核编译从 ~8 分钟降到 1~2 分钟
   - ubuntu-base tarball（`.cache/` 目录）
 - **并发控制**：同一 ref 的重复 push 会取消正在进行的旧构建
+
+## buffyboard 屏幕键盘（可选）
+
+[buffyboard](https://gitlab.postmarketos.org/postmarketOS/buffybox) 是 pmOS 项目的
+触摸屏控制台键盘，直接在 framebuffer/DRM 上画键盘，不依赖显示服务器——适合
+手机当上位机、没接键盘时直接在屏幕上操作终端。
+
+默认关闭（CI 也是 `BUFFYBOARD=0`），本地构建打开：
+
+```bash
+# 临时开一次
+BUFFYBOARD=1 ./scripts/assemble.sh devices/wt88047.env devices/vivo-y23l.env
+# 或者改 config/base.env 里的 BUFFYBOARD="1"
+```
+
+- 打开后在 chroot 里从源码编译（qemu 下约 10 分钟），产物是
+  `usr/local/bin/buffyboard` + 配置文件 + systemd unit（默认 enabled，开机自启）
+- **本地缓存**：第一次编译完成后产物打成
+  `.cache/buffyboard-<tag>-arm64.tar.gz`，之后构建直接解包安装，几秒完成；
+  删掉该文件（或改 `BUFFYBOARD_TAG`）才会重新编译
+- 版本钉在 `config/base.env` 的 `BUFFYBOARD_TAG`（当前 3.5.1），保证可复现
 
 ## 可复现性设计
 

@@ -20,12 +20,12 @@ PBL(固化在芯片里) → SBL/aboot(原厂 bootloader) → lk2nd(boot 分区)
 - **PBL / SBL**：高通的固化引导程序，不可更换，最终会把 boot 分区的内容加载起来。
 - **lk2nd**：刷在 boot 分区的"二级 bootloader"。它很小（400 多 KB），作用巨大：
   - 自动识别手机型号，从一堆 dtb 里选出匹配红米2 的那个；
-  - 提供一个新的 fastboot 界面（原厂 fastboot 太老，刷不了大镜像），后续的 boot.img / rootfs.img 都是通过 lk2nd 的 fastboot 刷入的；
-  - 把内核接力启动起来。
+  - 提供一个新的 fastboot 界面（原厂 fastboot 太老，刷不了大镜像），后续的 bootfs.img / rootfs.img 都是通过 lk2nd 的 fastboot 刷入的；
+  - 扫描文件系统里的 `/extlinux/extlinux.conf`，按配置把内核接力启动起来。
   
   它**不替换原厂 bootloader**，所以刷坏了也容易救（用原厂 fastboot 重新刷 lk2nd 即可）。
 
-- **主线内核**：就是 kernel.org 的 Linux（我们用 msm8916-mainline 维护的 v6.12 分支），编译出 `Image.gz`，尾巴上追加 dtb，打成 Android boot.img 格式。
+- **主线内核**：就是 kernel.org 的 Linux（我们用 msm8916-mainline 维护的 v6.12 分支），编译出 `Image.gz`。它和 initramfs、各机型 dtb 一起作为普通文件放在 ext2 启动分区（bootfs.img）里，由 lk2nd 按 extlinux.conf 加载——换内核、改 cmdline 进系统改文件就行，不用重新打包刷机。
 - **rootfs**：Ubuntu 24.04 arm64 的完整根文件系统（`/bin` `/etc` `/usr`……），做成 ext4 镜像刷进 userdata 分区（就是平时存照片的那个分区）。内核启动后按 UUID 找到它并挂载为 `/`，然后就是一台普通的 Ubuntu 机器了——`apt`、`systemd`、SSH 全都照常工作。
 
 ## dtb 是什么
@@ -48,6 +48,6 @@ PBL(固化在芯片里) → SBL/aboot(原厂 bootloader) → lk2nd(boot 分区)
 | lk2nd | 官方 release 直接下载（sha256 校验） |
 | 主线内核 | 从 msm8916-mainline/linux 源码交叉编译（可叠加机型配置片段） |
 | Ubuntu rootfs | ubuntu-base 官方 tarball + chroot 装包 + 机型定制服务 |
-| 打包 | mkbootimg 出 boot.img，img2simg 出 sparse rootfs.img，生成刷机脚本 |
+| 打包 | mke2fs 出 ext2 的 bootfs.img（extlinux.conf + 内核 + initramfs + dtb），img2simg 出 sparse rootfs.img，生成刷机脚本（mkbootimg 打 boot.img 为 legacy 路线） |
 
 全部由 GitHub Actions 自动完成，见[构建系统详解](build.md)。

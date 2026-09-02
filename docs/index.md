@@ -2,18 +2,18 @@
 
 把旧手机变成 Linux 上位机 —— **全自动构建刷机包**。
 
-本项目是 [KlipperPhonesLinux](https://github.com/umeiko/KlipperPhonesLinux) 的续作：从"收集别人做好的刷机包"转向"从源码全自动构建刷机包"。目前一期试点机型为 **红米2（wt88047 / 高通 MSM8916）**，系统底包为 **Ubuntu 24.04 arm64 最小系统**。
+本项目是 [KlipperPhonesLinux](https://github.com/umeiko/KlipperPhonesLinux) 的续作：从"收集别人做好的刷机包"转向"从源码全自动构建刷机包"。目前支持 **红米2（wt88047）** 和 **vivo Y23L（pd1419）** 两款 MSM8916 机型（见[机型列表](devices/index.md)），系统底包为 **Ubuntu 24.04 arm64 最小系统**。
 
 全部构建由 GitHub Actions 完成，也可以用 Docker 在本机一键构建（见[本地 Docker 构建](docker.md)）。
 
 ## 构建产物是什么
 
-每次构建产出一个 zip 刷机包，里面 6 个文件：
+每次构建产出一个 zip 刷机包（extlinux 合并包，一个包支持全部机型），里面 6 个文件：
 
 | 文件 | 是什么 |
 | --- | --- |
 | `lk2nd-msm8916.img` | 二级 bootloader（[msm8916-mainline/lk2nd](https://github.com/msm8916-mainline/lk2nd) 官方 release，sha256 校验）。刷进 boot 分区，负责识别机型、选对 dtb、提供 fastboot |
-| `boot.img` | 主线内核 `Image.gz` + appended dtb（Android boot 镜像格式，无 initramfs，靠 `root=UUID=` 直接挂根分区） |
+| `bootfs.img` | ext2 启动分区（红米2 刷 system 分区，Y23L 刷 boot 分区）：`/extlinux/extlinux.conf` + 内核 `Image.gz` + `initrd.img` + 全部机型的 dtb，lk2nd 按机型自动挑选（见 [extlinux 路线](extlinux.md)） |
 | `rootfs.img` | Ubuntu 24.04 arm64 最小系统（sparse ext4 格式，刷入 userdata 分区），已内置全部预装软件和自启服务 |
 | `flash.sh` / `flash.bat` | fastboot 一键刷入脚本（Linux/macOS 用 .sh，Windows 用 .bat） |
 | `BUILD-INFO.txt` | 构建溯源信息：内核版本、cmdline、lk2nd 版本、rootfs 来源、构建时间 |
