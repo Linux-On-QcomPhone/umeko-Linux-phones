@@ -18,8 +18,34 @@ env:
   PACK_VERSION: ${{ github.ref_name }}
 
 jobs:
+  # 文档/杂项 push 不触发刷机包构建。不用 trigger 级 paths-ignore，因为
+  # paths-ignore 对 tag push 同样生效，可能把 v* 发版构建一起跳过。
+  # 这里用一个秒级 job 做门控：tag 发版和手动触发永远放行。
+  changes:
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' && github.ref_type == 'branch'
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            code:
+              - 'scripts/**'
+              - 'devices/**'
+              - 'config/**'
+              - 'kernels/**'
+              - '.gitmodules'
+              - '.github/workflows/build.yml'
+
   build:
     name: wt88047 (msm8916)
+    needs: changes
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.ref_type == 'tag' ||
+      needs.changes.outputs.code == 'true'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4

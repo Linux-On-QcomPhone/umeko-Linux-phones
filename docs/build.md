@@ -36,7 +36,7 @@ wt88047 的内核片段（`devices/wt88047/kernel.config`）在 msm8916_defconfi
 
 ## CI 流水线（.github/workflows/build.yml）
 
-- **触发**：push 到 `main` 或手动触发 → 构建并上传 artifact（保留 14 天）；push `v*` tag → 构建并发布 GitHub Release
+- **触发**：push 到 `main` 且改动涉及代码（`scripts/` `devices/` `config/` `kernels/` 等，由 `dorny/paths-filter` 门控——纯文档变更不构建）或手动触发 → 构建并上传 artifact（保留 14 天）；push `v*` tag → 始终构建并发布 GitHub Release（tag 不受路径过滤影响）
 - **环境**：`ubuntu-24.04` runner，依赖安装清单与 [Dockerfile](docker.md) 一致
 - **缓存**：
   - ccache（key `kernel-wt88047`）——第二次起内核编译从 ~8 分钟降到 1~2 分钟
