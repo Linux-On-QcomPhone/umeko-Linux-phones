@@ -103,6 +103,22 @@ log "installing kernel modules ($KREL)"
 sudo mkdir -p "$MNT_DIR/lib/modules"
 sudo cp -a "$MODDIR" "$MNT_DIR/lib/modules/"
 
+# --- initramfs --------------------------------------------------------------
+# root=UUID= cannot be resolved by the kernel alone (UUID is a filesystem
+# identifier resolved by blkid in userspace) — an initramfs is required.
+# MODULES=dep keeps it small: SDHCI/EXT4 are built into the kernel already,
+# and lk2nd's boot memory is limited to 50 MiB (kernel + initrd + dtb).
+log "generating initramfs ($KREL)"
+# mkinitramfs looks for /boot/config-$KREL to verify compressor support
+sudo cp "$BUILD_DIR/kernel/.config" "$MNT_DIR/boot/config-$KREL"
+# MODULES=dep needs sysfs inside the chroot; verify the bind mounts survived
+# the in-chroot package setup before invoking mkinitramfs.
+sudo chroot "$MNT_DIR" test -d /sys/devices \
+    || die "sysfs not visible inside chroot ($MNT_DIR/sys)"
+printf 'MODULES=dep\nCOMPRESS=zstd\n' | sudo tee "$MNT_DIR/etc/initramfs-tools/conf.d/umeko.conf" >/dev/null
+sudo chroot "$MNT_DIR" mkinitramfs -o "/boot/initrd.img-$KREL" "$KREL"
+sudo cp "$MNT_DIR/boot/initrd.img-$KREL" "$BUILD_DIR/initrd.img"
+
 # --- device-specific customization (devices/<codename>/) --------------------
 # Multi-device builds apply every device's overlay/hook in command-line order
 # (the combined extlinux package shares one rootfs across devices).
@@ -128,6 +144,68 @@ if [[ -n "${WEBSSH_URL:-}" ]]; then
     sudo install -D -m 755 "$WEBSSH_BIN" "$MNT_DIR/usr/local/lib/umeko/webssh"
 fi
 
+# --- buffyboard on-screen keyboard -------------------------------------------
+# Touchscreen keyboard for the framebuffer console (all current devices are
+# touchscreen phones without a physical keyboard). Built from source inside
+# the chroot — no prebuilt arm64/glibc binaries are published; the pinned tag
+# keeps builds reproducible. The install payload is cached as a tarball in
+# .cache so rebuilds skip the (slow, qemu-emulated) lvgl compilation.
+if [[ "${BUFFYBOARD:-0}" != "0" ]]; then
+    BUFFYBOARD_PKG="$CACHE_DIR/buffyboard-$BUFFYBOARD_TAG-arm64.tar.gz"
+    if [[ -f "$BUFFYBOARD_PKG" ]]; then
+        log "installing cached buffyboard $BUFFYBOARD_TAG"
+        sudo tar -xzf "$BUFFYBOARD_PKG" -C "$MNT_DIR"
+        sudo chroot "$MNT_DIR" bash -c '
+set -e
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -qq
+apt-get install -y --no-install-recommends libinput10 libxkbcommon0 libdrm2 libinih1
+systemctl enable buffyboard.service
+apt-get clean
+rm -rf /var/lib/apt/lists/*
+'
+    else
+        BUFFYBOX_DIR="$CACHE_DIR/buffybox-$BUFFYBOARD_TAG"
+        if [[ ! -d "$BUFFYBOX_DIR" ]]; then
+            log "fetching buffybox $BUFFYBOARD_TAG (buffyboard source)"
+            git clone --depth 1 -b "$BUFFYBOARD_TAG" \
+                https://gitlab.postmarketos.org/postmarketOS/buffybox.git "$BUFFYBOX_DIR"
+            git -C "$BUFFYBOX_DIR" submodule update --init --depth 1 lvgl
+        fi
+        log "building and installing buffyboard $BUFFYBOARD_TAG inside chroot"
+        sudo rm -rf "$MNT_DIR/tmp/buffybox"
+        sudo cp -a "$BUFFYBOX_DIR" "$MNT_DIR/tmp/buffybox"
+        sudo chroot "$MNT_DIR" bash -c '
+set -e
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -qq
+apt-get install -y --no-install-recommends \
+    meson ninja-build gcc pkg-config \
+    libinih-dev libinput-dev libudev-dev libxkbcommon-dev libdrm-dev
+cd /tmp/buffybox
+meson setup build -Dman=false -Dsystemd=true
+ninja -C build buffyboard/buffyboard
+meson install -C build --tags buffyboard --no-rebuild
+systemctl enable buffyboard.service
+# keep the runtime libraries (pulled in by the -dev packages) across the
+# purge of build-only dependencies
+apt-mark manual libinput10 libudev1 libxkbcommon0 libdrm2 libinih1
+apt-get purge -y meson ninja-build gcc pkg-config \
+    libinih-dev libinput-dev libudev-dev libxkbcommon-dev libdrm-dev
+apt-get autoremove --purge -y
+apt-get clean
+rm -rf /var/lib/apt/lists/*
+'
+        # cache the install payload for future rebuilds
+        sudo tar -czf "$BUFFYBOARD_PKG" -C "$MNT_DIR" \
+            usr/local/bin/buffyboard \
+            usr/local/etc/buffyboard.conf \
+            usr/local/lib/systemd/system/buffyboard.service \
+            usr/local/lib/systemd/system/getty@.service.d/buffyboard.conf
+        sudo rm -rf "$MNT_DIR/tmp/buffybox"
+    fi
+fi
+
 # post-assemble.sh: device hook executed inside the chroot after everything
 # above (enable services, build/install extra software, ...).
 for i in "${!DEVICE_DIRS[@]}"; do
@@ -137,7 +215,7 @@ for i in "${!DEVICE_DIRS[@]}"; do
         sudo cp "$dir/post-assemble.sh" "$MNT_DIR/tmp/umeko-device-setup.sh"
         sudo chroot "$MNT_DIR" env \
             DEVICE_CODENAME="$(basename "$dir")" DEVICE_NAME="${DEVICE_NAMES[$i]}" \
-            SOC="$SOC" DEFAULT_USER="$DEFAULT_USER" \
+            SOC="$SOC" DEFAULT_USER="$DEFAULT_USER" BOOTFS_UUID="${BOOTFS_UUID:-}" \
             bash /tmp/umeko-device-setup.sh
         sudo rm -f "$MNT_DIR/tmp/umeko-device-setup.sh"
     fi

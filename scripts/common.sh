@@ -52,3 +52,15 @@ collect_devices() {
         DEVICE_CODES+=("$code")
     done
 }
+
+# Trim free space in the rootfs image (punch holes via loop discard) so the
+# sparse image produced by img2simg does not carry stale blocks from files
+# deleted during assemble (e.g. purged build dependencies).
+trim_rootfs_image() {
+    local img="$1" mnt
+    mnt="$(mktemp -d)"
+    sudo mount -o loop "$img" "$mnt"
+    sudo fstrim "$mnt"
+    sudo umount "$mnt"
+    rmdir "$mnt"
+}

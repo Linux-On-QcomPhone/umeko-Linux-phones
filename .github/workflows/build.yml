@@ -19,6 +19,10 @@ env:
   # (fdtdir boot; lk2nd/lk1st picks the dtb per device).
   DEVICE_ENVS_EXTLINUX: devices/wt88047.env devices/vivo-y23l.env
   PACK_VERSION: ${{ github.ref_name }}
+  # CI builds the base package only. buffyboard (on-screen keyboard) is slow
+  # to compile under qemu; local builds can enable it via BUFFYBOARD=1
+  # (payload is then cached in .cache/ for fast rebuilds). See docs/build.md.
+  BUFFYBOARD: "0"
 
 jobs:
   # 文档/杂项 push 不触发刷机包构建。不用 trigger 级 paths-ignore，因为
@@ -85,10 +89,7 @@ jobs:
       - name: Assemble rootfs (chroot)
         run: ./scripts/assemble.sh $DEVICE_ENVS_EXTLINUX
 
-      - name: Pack flashing bundle
-        run: ./scripts/pack.sh "$DEVICE_ENV"
-
-      - name: Pack extlinux bundle (experimental, multi-device)
+      - name: Pack extlinux bundle (multi-device)
         run: ./scripts/pack_extlinux.sh $DEVICE_ENVS_EXTLINUX
 
       - name: Upload artifact

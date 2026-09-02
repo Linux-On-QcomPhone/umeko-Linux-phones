@@ -30,12 +30,19 @@ fi
 rm -rf "$STAGE"
 mkdir -p "$STAGE" "$OUT_DIR"
 
-# --- boot.img: kernel + appended dtb, no initramfs (root=UUID direct mount) --
+# --- boot.img: kernel + appended dtb + initramfs (root=UUID= needs it) ------
 log "creating boot.img"
 cat "$KBUILD/arch/arm64/boot/Image.gz" \
     "$KBUILD/arch/arm64/boot/dts/$KERNEL_DTB" > "$STAGE/kernel-dtb"
+RAMDISK_ARGS=()
+if [[ -f "$BUILD_DIR/initrd.img" ]]; then
+    RAMDISK_ARGS=(--ramdisk "$BUILD_DIR/initrd.img")
+else
+    warn "initrd.img missing (assemble.sh too old?) — root=UUID= needs an initramfs!"
+fi
 mkbootimg \
     --kernel "$STAGE/kernel-dtb" \
+    "${RAMDISK_ARGS[@]}" \
     --base "$BOOTIMG_BASE" \
     --kernel_offset "$BOOTIMG_KERNEL_OFFSET" \
     --ramdisk_offset "$BOOTIMG_RAMDISK_OFFSET" \
@@ -54,6 +61,7 @@ echo "$LK2ND_SHA256  $LK2ND_IMG" | sha256sum -c -
 
 # --- sparse rootfs for fastboot ------------------------------------------------
 log "converting rootfs to sparse image"
+trim_rootfs_image "$BUILD_DIR/rootfs.img"
 img2simg "$BUILD_DIR/rootfs.img" "$STAGE/rootfs.img"
 
 # --- flash scripts ---------------------------------------------------------------

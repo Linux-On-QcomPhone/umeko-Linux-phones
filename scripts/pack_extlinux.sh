@@ -41,6 +41,13 @@ mkdir -p "$STAGE/root/extlinux" "$OUT_DIR"
 # --- bootfs contents ----------------------------------------------------------
 log "staging extlinux boot filesystem (${DEVS_JOINED})"
 cp "$KBUILD/arch/arm64/boot/Image.gz" "$STAGE/root/"
+INITRD_LINE=""
+if [[ -f "$BUILD_DIR/initrd.img" ]]; then
+    cp "$BUILD_DIR/initrd.img" "$STAGE/root/initrd.img"
+    INITRD_LINE="initrd /initrd.img"
+else
+    warn "initrd.img missing (assemble.sh too old?) — root=UUID= needs an initramfs!"
+fi
 for dtb in "${DEVICE_DTBS[@]}"; do
     mkdir -p "$STAGE/root/dtbs/$(dirname "$dtb")"
     cp "$KBUILD/arch/arm64/boot/dts/$dtb" "$STAGE/root/dtbs/$dtb"
@@ -63,13 +70,14 @@ default umeko
 label umeko
     linux /Image.gz
     $FDT_LINE
+    $INITRD_LINE
     append $KERNEL_CMDLINE
 EOF
 
 # --- bootfs.img: plain ext2, populated with mke2fs -d --------------------------
 log "creating bootfs.img (ext2, ${BOOTFS_SIZE_MB} MiB)"
 dd if=/dev/zero of="$STAGE/bootfs.img" bs=1M count="$BOOTFS_SIZE_MB" status=none
-mke2fs -q -t ext2 -L umeko-boot -d "$STAGE/root" "$STAGE/bootfs.img"
+mke2fs -q -t ext2 -L umeko-boot -U "$BOOTFS_UUID" -d "$STAGE/root" "$STAGE/bootfs.img"
 rm -rf "$STAGE/root"
 
 # --- lk2nd (official prebuilt, checksum-verified) ------------------------------
@@ -83,6 +91,7 @@ echo "$LK2ND_SHA256  $LK2ND_IMG" | sha256sum -c -
 
 # --- sparse rootfs for fastboot -------------------------------------------------
 log "converting rootfs to sparse image"
+trim_rootfs_image "$BUILD_DIR/rootfs.img"
 img2simg "$BUILD_DIR/rootfs.img" "$STAGE/rootfs.img"
 
 # --- flash scripts ---------------------------------------------------------------
