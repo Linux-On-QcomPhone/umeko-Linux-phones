@@ -107,6 +107,11 @@ extlinux 这套文件布局也可以直接复用，不算弯路。
 ## 待办
 
 - [x] 多机型合并包（fdtdir，红米2 + vivo Y23L），CI 出包
+- [x] Y23L 引导流程调研：底包（gpt/hyp/rpm/sbl1/tz/recovery）+ lk1st 刷 aboot
+      + bootfs 刷 boot，参考 KlipperPhonesLinux vivo 刷机包；lk1st 两种面板
+      版本已验证可用 tag 23.1 源码编译
 - [ ] 真机刷入验证（红米2：lk2nd + bootfs.img 刷 system 分区）
-- [ ] vivo Y23L：lk1st 构建接入 CI + tz/hyp 替换流程整理 + 真机验证
-- [ ] 评估在 extlinux 之上加 initramfs（做真正的开机自动扩容、LUKS 等）
+- [ ] vivo Y23L：lk1st 构建接入 CI（main 分支有生成头文件冲突，需钉 23.1）
+      + 真机验证
+- [ ] 评估在 extlinux 之上加 initramfs（做真正的开机自动扩容、LUKS 等；
+      参考包的 bootfs 就带 initrd，可对比学习）
