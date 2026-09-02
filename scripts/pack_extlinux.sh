@@ -1,0 +1,131 @@
+#!/usr/bin/env bash
+# EXPERIMENTAL: alternative to pack.sh — boot via lk2nd + extlinux.conf
+# instead of an Android boot.img (no mkbootimg involved).
+#
+# Layout produced (pmOS "kernel-extlinux" style):
+#   boot     <- lk2nd-msm8916.img   (stock fastboot, once)
+#   system   <- bootfs.img          (ext2: /extlinux/extlinux.conf + kernel + dtb)
+#   userdata <- rootfs.img          (sparse ext4, unchanged)
+#
+# lk2nd scans every partition >= 16MiB (plus boot at +512KiB) for an ext2
+# filesystem containing /extlinux/extlinux.conf and boots the default label.
+# NOTE: lk2nd's ext2 driver has no extents support, so the boot fs MUST be
+# plain ext2 (mke2fs -t ext2), not ext4.
+#
+# Usage: PACK_VERSION=v1.0 scripts/pack_extlinux.sh devices/wt88047.env
+set -euo pipefail
+source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
+load_device "$@"
+
+KBUILD="$BUILD_DIR/kernel"
+KREL="$(cat "$BUILD_DIR/kernelrelease")"
+PKG_VERSION="${PACK_VERSION:-$(date +%Y%m%d)}"
+PKG_NAME="umeko-${DEVICE_CODENAME}-ubuntu24.04-${PKG_VERSION}-extlinux"
+STAGE="$BUILD_DIR/pack-extlinux"
+BOOTFS_SIZE_MB=64
+
+[[ -f "$BUILD_DIR/rootfs.img" ]] || die "rootfs.img missing, run assemble.sh first"
+command -v mke2fs   >/dev/null || die "mke2fs not installed (e2fsprogs)"
+command -v img2simg >/dev/null || die "img2simg not installed (android-sdk-libsparse-utils)"
+
+rm -rf "$STAGE"
+mkdir -p "$STAGE/root/extlinux" "$STAGE/root/dtbs/qcom" "$OUT_DIR"
+
+# --- bootfs contents ----------------------------------------------------------
+log "staging extlinux boot filesystem"
+cp "$KBUILD/arch/arm64/boot/Image.gz" "$STAGE/root/"
+cp "$KBUILD/arch/arm64/boot/dts/$KERNEL_DTB" "$STAGE/root/dtbs/$KERNEL_DTB"
+
+cat > "$STAGE/root/extlinux/extlinux.conf" <<EOF
+timeout 1
+menu title umeko Linux ($DEVICE_NAME)
+default umeko
+
+label umeko
+    linux /Image.gz
+    fdt /dtbs/$KERNEL_DTB
+    append $KERNEL_CMDLINE
+EOF
+
+# --- bootfs.img: plain ext2, populated with mke2fs -d --------------------------
+log "creating bootfs.img (ext2, ${BOOTFS_SIZE_MB} MiB)"
+dd if=/dev/zero of="$STAGE/bootfs.img" bs=1M count="$BOOTFS_SIZE_MB" status=none
+mke2fs -q -t ext2 -L umeko-boot -d "$STAGE/root" "$STAGE/bootfs.img"
+rm -rf "$STAGE/root"
+
+# --- lk2nd (official prebuilt, checksum-verified) ------------------------------
+log "downloading lk2nd ${LK2ND_VERSION}"
+LK2ND_IMG="$STAGE/lk2nd-${SOC}.img"
+curl -fL --retry 3 -o "$LK2ND_IMG" "$LK2ND_URL"
+echo "$LK2ND_SHA256  $LK2ND_IMG" | sha256sum -c -
+
+# --- sparse rootfs for fastboot -------------------------------------------------
+log "converting rootfs to sparse image"
+img2simg "$BUILD_DIR/rootfs.img" "$STAGE/rootfs.img"
+
+# --- flash scripts ---------------------------------------------------------------
+LK2ND_FILE="$(basename "$LK2ND_IMG")"
+
+cat > "$STAGE/flash.sh" <<EOF
+#!/usr/bin/env bash
+# Flash umeko Linux ($DEVICE_NAME / $DEVICE_CODENAME), extlinux variant.
+set -euo pipefail
+echo "[1/4] Flashing lk2nd bootloader (stock fastboot)..."
+fastboot flash boot $LK2ND_FILE || fastboot flash:raw boot $LK2ND_FILE
+echo
+echo "lk2nd flashed. Reboot the phone and hold VOLUME-DOWN to enter"
+echo "the lk2nd fastboot mode (its own fastboot, not the stock one)."
+fastboot reboot || true
+read -rp "Press Enter once the phone shows the lk2nd fastboot screen..."
+echo "[2/4] Flashing extlinux boot fs to system partition..."
+fastboot flash system bootfs.img
+echo "[3/4] Flashing rootfs to userdata (THIS ERASES USER DATA)..."
+fastboot flash userdata rootfs.img
+echo "[4/4] Rebooting into Linux..."
+fastboot reboot
+echo "Done. First boot takes a while; log in as '$DEFAULT_USER' / '$DEFAULT_PASSWORD'."
+EOF
+chmod +x "$STAGE/flash.sh"
+
+cat > "$STAGE/flash.bat" <<EOF
+@echo off
+echo [1/4] Flashing lk2nd bootloader (stock fastboot)...
+fastboot flash boot $LK2ND_FILE
+if errorlevel 1 fastboot flash:raw boot $LK2ND_FILE
+echo.
+echo lk2nd flashed. The phone will reboot; hold VOLUME-DOWN to enter
+echo the lk2nd fastboot mode (its own fastboot, not the stock one).
+fastboot reboot
+pause
+echo [2/4] Flashing extlinux boot fs to system partition...
+fastboot flash system bootfs.img
+echo [3/4] Flashing rootfs to userdata (THIS ERASES USER DATA)...
+fastboot flash userdata rootfs.img
+echo [4/4] Rebooting into Linux...
+fastboot reboot
+echo Done. First boot takes a while; log in as '$DEFAULT_USER' / '$DEFAULT_PASSWORD'.
+pause
+EOF
+
+cat > "$STAGE/BUILD-INFO.txt" <<EOF
+package:  $PKG_NAME  (EXPERIMENTAL extlinux boot)
+device:   $DEVICE_NAME ($DEVICE_CODENAME), SoC $SOC
+kernel:   $KREL (msm8916-mainline/linux)
+cmdline:  $KERNEL_CMDLINE
+lk2nd:    $LK2ND_VERSION ($LK2ND_URL)
+rootfs:   $(basename "$UBUNTU_BASE_URL"), UUID $ROOTFS_UUID
+built:    $(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+Flashing layout (extlinux variant):
+  boot     <- $LK2ND_FILE   (once, from the stock bootloader)
+  system   <- bootfs.img    (ext2: /extlinux/extlinux.conf + Image.gz + dtb)
+  userdata <- rootfs.img    (sparse ext4)
+
+Login: $DEFAULT_USER / $DEFAULT_PASSWORD
+Consoles: screen (tty0), UART ($SERIAL_CONSOLES), USB gadget serial (ttyGS0), SSH
+EOF
+
+log "packing $PKG_NAME.zip"
+( cd "$STAGE" && zip -q -9 -r "$OUT_DIR/$PKG_NAME.zip" . )
+ls -lh "$OUT_DIR/$PKG_NAME.zip"
+log "done: $OUT_DIR/$PKG_NAME.zip"

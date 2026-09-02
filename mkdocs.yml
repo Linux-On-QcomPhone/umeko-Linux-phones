@@ -34,3 +34,4 @@ nav:
   - 构建系统详解: build.md
   - 本地 Docker 构建: docker.md
   - 刷机与日常使用: flashing.md
+  - 可选路线：extlinux 启动（实验性）: extlinux.md
