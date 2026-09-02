@@ -57,7 +57,30 @@ wt88047 的内核片段（`devices/wt88047/kernel.config`）在 msm8916_defconfi
 3. 按需创建 `devices/<codename>/`（kernel.config / rootfs overlay / post-assemble.sh）
 4. 在 `.github/workflows/build.yml` 把 `DEVICE_ENV` 改成 matrix 以并行构建多机型
 
+## boot.img 打包参数（mkbootimg）来源
+
+`devices/wt88047.env` 里的 `BOOTIMG_*` 参数不是拍脑袋定的，来源是 **postmarketOS 的 pmaports 仓库**：
+
+`device/community/device-xiaomi-wt88047/deviceinfo`（[gitlab.com/postmarketOS/pmaports](https://gitlab.com/postmarketOS/pmaports/-/blob/master/device/community/device-xiaomi-wt88047/deviceinfo)）中的 `deviceinfo_flash_offset_*` 系列：
+
+| 本仓库参数 | pmaports deviceinfo | 值 |
+| --- | --- | --- |
+| `BOOTIMG_BASE` | `deviceinfo_flash_offset_base` | `0x80000000` |
+| `BOOTIMG_KERNEL_OFFSET` | `deviceinfo_flash_offset_kernel` | `0x00080000` |
+| `BOOTIMG_RAMDISK_OFFSET` | `deviceinfo_flash_offset_ramdisk` | `0x02000000` |
+| `BOOTIMG_SECOND_OFFSET` | `deviceinfo_flash_offset_second` | `0x00f00000` |
+| `BOOTIMG_TAGS_OFFSET` | `deviceinfo_flash_offset_tags` | `0x01e00000` |
+| `BOOTIMG_PAGESIZE` | `deviceinfo_flash_pagesize` | `2048` |
+| dtb 追加在 kernel 后（`cat Image.gz dtb`） | `deviceinfo_append_dtb="true"` | — |
+
+这套布局是 **lk2nd 引导约定的事实标准**（lk2nd 解析 boot.img 头并按这些偏移加载）。注意老项目 KlipperPhonesLinux 的 `mkboot.sh` 用的是 stock-aboot 风格偏移（kernel `0x8000` / ramdisk `0x01000000` / tags `0x100`），与本仓库不同——两套经 lk2nd 引导都能工作，新项目统一采用 pmOS 约定。
+
+`KERNEL_CMDLINE` 里的 `root=UUID=93afcbbe-…` 来自 `build_rootfs.sh` 里 `mkfs.ext4 -U` 写入的固定 UUID（沿用老项目 base rootfs 的 UUID），不是从任何设备里读出来的。
+
+**添加新机型时**：优先抄对应 pmaports `deviceinfo` 的 `deviceinfo_flash_offset_*`；pmaports 没有的机型，用 `unpackbootimg` 或 `pmbootstrap bootimg_analyze` 分析原厂 boot.img 提取参数。
+
 ## 已知边界
 
 - 内核版本号在本地 Windows 工作区直接构建时可能带 `-dirty` 后缀（Windows 文件系统丢 exec 位/符号链接导致内核 git 树变"脏"）。用[容器内构建](docker.md)则无此问题；CI 上始终干净
 - Ubuntu 24.04 的 `mkbootimg` 包漏装了 `gki` python 模块（上游打包 bug，只在用 GKI 签名参数时才真正需要它）。`pack.sh` 检测到会自动在宿主机装一个 stub 模块，无需人工干预
+- **USB 串口控制台与 OTG 热插拔互斥**（见 [#36 分析](https://github.com/umeiko/KlipperPhonesLinux/issues/36)）：`kernel.config` 里 `CONFIG_USB_G_SERIAL=y` 把 g_serial gadget 内建进内核，开机即独占 USB 控制器（UDC），之后插入 OTG 线时 ID 脚触发的 host 角色切换无法进行。规避：OTG 线需在开机前插好；要热插拔 OTG 需改用可卸载方案（`g_serial=m` 或 configfs gadget 按需绑定，见 issue 讨论）
