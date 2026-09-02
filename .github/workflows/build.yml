@@ -25,19 +25,20 @@ jobs:
     runs-on: ubuntu-24.04
     if: github.event_name == 'push' && github.ref_type == 'branch'
     outputs:
-      code: ${{ steps.filter.outputs.code }}
+      code: ${{ steps.check.outputs.code }}
     steps:
-      - uses: dorny/paths-filter@v3
-        id: filter
+      - uses: actions/checkout@v4
         with:
-          filters: |
-            code:
-              - 'scripts/**'
-              - 'devices/**'
-              - 'config/**'
-              - 'kernels/**'
-              - '.gitmodules'
-              - '.github/workflows/build.yml'
+          fetch-depth: 0   # 需要 before 提交做 diff；仓库本身很小
+      - id: check
+        run: |
+          CHANGED=$(git diff --name-only "${{ github.event.before }}" HEAD)
+          echo "$CHANGED"
+          if echo "$CHANGED" | grep -qE '^(scripts|devices|config|kernels)/|^\.gitmodules$|^\.github/workflows/build\.yml$'; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "code=false" >> "$GITHUB_OUTPUT"
+          fi
 
   build:
     name: wt88047 (msm8916)
