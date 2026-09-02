@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# EXPERIMENTAL: alternative to pack.sh — boot via lk2nd + extlinux.conf
-# instead of an Android boot.img (no mkbootimg involved).
+# Default packing route: boot via lk2nd + extlinux.conf instead of an
+# Android boot.img (no mkbootimg involved; pack.sh is the legacy route).
 #
 # Usage: PACK_VERSION=v1.0 scripts/pack_extlinux.sh devices/<a>.env [devices/<b>.env ...]
 #
@@ -139,7 +139,7 @@ pause
 EOF
 
 {
-    echo "package:  $PKG_NAME  (EXPERIMENTAL extlinux boot)"
+    echo "package:  $PKG_NAME  (extlinux boot)"
     for i in "${!DEVICE_DIRS[@]}"; do
         echo "device:   ${DEVICE_NAMES[$i]} ($(basename "${DEVICE_DIRS[$i]}")), dtb ${DEVICE_DTBS[$i]}"
     done
