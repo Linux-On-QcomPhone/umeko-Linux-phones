@@ -5,6 +5,8 @@
 
 **当前状态**：一期试点 —— 红米2 (wt88047 / msm8916) + Ubuntu 24.04 base 最小系统（不含 Klipper）。全部由 GitHub Actions 构建。
 
+📖 **文档站**：[umeiko.github.io/umeko-Linux-phones](https://umeiko.github.io/umeko-Linux-phones/) —— 从小白原理到本地构建的完整文档。
+
 ## 构建产物
 
 每个构建产出一个 zip 刷机包：
@@ -60,16 +62,29 @@ wt88047 的机型定制（`devices/wt88047/`）内置了来自
 
 ```
 ├── .github/workflows/build.yml   # CI 流水线
+├── .github/workflows/pages.yml   # 文档站部署（GitHub Pages）
 ├── config/base.env               # 全局配置（ubuntu-base 源、预装包、时区）
 ├── devices/wt88047.env           # 机型配置（内核/dtb/mkbootimg 参数/lk2nd/cmdline/webssh 源）
 ├── devices/wt88047/              # 机型定制：kernel.config、rootfs/ overlay、post-assemble.sh
+├── docker/Dockerfile             # 本地构建环境（与 CI 依赖一致）
+├── docs/                         # 文档站源码（mkdocs-material）
 ├── kernels/msm8916               # submodule：msm8916-mainline/linux @ v6.12.1-msm8916
-└── scripts/                      # build_kernel / build_rootfs / assemble / pack
+└── scripts/                      # build_kernel / build_rootfs / assemble / pack / docker_build
 ```
 
 ## 本地构建（可选）
 
-脚本可在 WSL2 (Ubuntu 24.04) 上直接运行，依赖同 CI：
+**推荐 Docker 一键构建**（Linux/macOS/Windows 均可，Windows 请在 Git Bash 里跑）：
+
+```bash
+git clone --recursive https://github.com/umeiko/umeko-Linux-phones.git
+cd umeko-Linux-phones
+./scripts/docker_build.sh devices/wt88047.env    # 产物在 ./out/
+```
+
+详见[文档站的本地构建篇](https://umeiko.github.io/umeko-Linux-phones/docker/)。
+
+脚本也可在 WSL2 (Ubuntu 24.04) 上直接运行，依赖同 CI：
 
 ```bash
 sudo apt install gcc-aarch64-linux-gnu bc bison flex libssl-dev libncurses-dev kmod ccache \
