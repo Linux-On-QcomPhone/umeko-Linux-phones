@@ -7,3 +7,10 @@ set -e
 # BOOTFS_UUID is fixed in config/base.env and written into the bootfs image
 # by pack_extlinux.sh (mke2fs -U).
 echo "UUID=${BOOTFS_UUID} /boot ext2 defaults 0 2" >> /etc/fstab
+
+
+chmod 755 /usr/local/sbin/*.sh
+
+systemctl enable buffyboard.service \
+    ncm-serial.service \
+    usb-gadget.service
