@@ -31,7 +31,7 @@ new file mode 100644
 index 000000000..64fa537ac
 --- /dev/null
 +++ b/arch/arm64/boot/dts/qcom/msm8916-vivo-cdp.dtsi
-@@ -0,0 +1,336 @@
+@@ -0,0 +1,330 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +
 +/dts-v1/;
@@ -275,21 +275,14 @@ index 000000000..64fa537ac
 +	reg = <0x0 0x86800000 0x0 0x4e00000>;
 +};
 +
-+&pm8916_usbin {
-+	status = "okay";
-+};
-+
 +&usb {
 +	status = "okay";
-+	usb-role-switch;
-+	/* VBUS from PM8916 USBIN (no charger driver with extcon on this
-+	 * platform), ID from GPIO110 as on the stock firmware */
-+	extcon = <&pm8916_usbin>, <&usb_id>;
++	extcon = <&usb_id>, <&usb_id>;
 +	vbus-supply = <&usb_vbus>;
 +};
 +
 +&usb_hs_phy {
-+	extcon = <&pm8916_usbin>;
++	extcon = <&usb_id>;
 +};
 +
 +&venus {
@@ -512,7 +505,7 @@ index 000000000..e8bcb5b3e
 +
 +/ {
 +	model = "Vivo Y23L / Y623 / Y923";
-+	compatible = "vivo,pd1419", "qcom,msm8916";
++	compatible = "vivo,pd1419>", "qcom,msm8916";
 +	chassis-type = "handset";
 +	
 +	battery: battery-cell {
