@@ -1,7 +1,7 @@
 From d851a579cc306f1cbe21dfb70c49ba2034242626 Mon Sep 17 00:00:00 2001
 From: Tikily <1606320261@qq.com>
 Date: Fri, 24 Jul 2026 19:47:34 +0800
-Subject: [PATCH 2/2] panel: Add nt35510s and orise8012a
+Subject: [PATCH 2/3] panel: Add nt35510s and orise8012a
 
 ---
  .../gpu/drm/panel/msm8916-generated/Kconfig   |  10 +
