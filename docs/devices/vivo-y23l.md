@@ -97,10 +97,12 @@ lk2nd/lk1st 开机扫描到 system 分区的 bootfs.img 后，按设备数据库
 
 - `kernel-patches/`：设备树（msm8916-vivo-cdp.dtsi + pd1419.dts + pd1304.dts）
   和两个面板驱动（修正了上游 patch 中 pd1419 compatible 的笔误；`&usb`
-  的 extcon 同时接 `pm8916_usbin`（VBUS 检测）和 `usb_id`（ID GPIO），
-  否则 ci_hdrc 拿不到 VBUS、USB device 模式不工作）
+  的两个 extcon 槽都接 GPIO110 ID 的 extcon，对齐已验证可用的 legacy 镜像）
 - `kernel.config`：`CONFIG_DRM_PANEL_VIVO_NT35510S=m`、
-  `CONFIG_DRM_PANEL_VIVO_ORISE8012A=m`
+  `CONFIG_DRM_PANEL_VIVO_ORISE8012A=m`，以及 **`CONFIG_CHARGER_SMB347=m`
+  （不可省）**：`&usb` 的 `vbus-supply` 指向 smb358 充电节点里的 `usb_vbus`
+  regulator，缺了这个驱动 ci_hdrc 会一直 probe defer，USB（含串口 gadget）
+  整个起不来
 - `post-assemble.sh`：写 fstab 行，把 bootfs（固定 UUID 的 ext2 启动分区）
   开机自动挂载到 `/boot`，方便在系统里直接改 extlinux.conf / 换内核
 
