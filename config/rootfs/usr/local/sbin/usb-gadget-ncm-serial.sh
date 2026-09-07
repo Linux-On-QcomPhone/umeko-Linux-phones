@@ -9,12 +9,23 @@ then
     exit 1
 fi
 
-if [ -z "${UDC}" ] && [ -d "/sys/class/udc" ]
-then
-    UDC="$(ls /sys/class/udc | head -1)"
-fi
+# The UDC may appear late (e.g. ci_hdrc waits on the charger regulator,
+# CONFIG_CHARGER_SMB347=m). Wait briefly before giving up.
+i=0
+while [ -z "${UDC}" ] && [ "${i}" -lt 15 ]
+do
+    if [ -d "/sys/class/udc" ]
+    then
+        UDC="$(ls /sys/class/udc 2>/dev/null | head -1)"
+    fi
+    [ "${UDC}" ] || { i=$((i+1)); sleep 1; }
+done
 
-[ "${UDC}" ] || exit 0
+if [ -z "${UDC}" ]
+then
+    echo "ERROR: no UDC showed up under /sys/class/udc after 15s" >&2
+    exit 1
+fi
 
 modprobe libcomposite
 CONFIGFS_DIR="/sys/kernel/config/usb_gadget/g1"
@@ -45,8 +56,18 @@ setup()
     echo "02:11:22:33:44:56" > functions/ncm.usb0/host_addr
     ln -s functions/ncm.usb0 configs/c.1
 
-    mkdir -p functions/acm.usb0
-    ln -s functions/acm.usb0 configs/c.1
+    # Serial console -> /dev/ttyGS0. Prefer the acm function
+    # (CONFIG_USB_CONFIGFS_ACM, proven combo on the reference vivo build
+    # and enumerates cleanly as a COM port on Windows); fall back to gser
+    # (CONFIG_USB_CONFIGFS_SERIAL) for kernels built without acm.
+    if mkdir -p functions/acm.usb0 2>/dev/null
+    then
+        SERIAL_FUNC="acm.usb0"
+    else
+        mkdir -p functions/gser.usb0
+        SERIAL_FUNC="gser.usb0"
+    fi
+    ln -s functions/${SERIAL_FUNC} configs/c.1
 }
 
 activate()
@@ -60,9 +81,11 @@ reset()
         ip link set usb0 down 2>/dev/null || true
     fi
 
+    rm -f ${CONFIGFS_DIR}/configs/c.1/gser.usb0 2>/dev/null || true
     rm -f ${CONFIGFS_DIR}/configs/c.1/acm.usb0 2>/dev/null || true
     rm -f ${CONFIGFS_DIR}/configs/c.1/ncm.usb0 2>/dev/null || true
 
+    rmdir ${CONFIGFS_DIR}/functions/gser.usb0 2>/dev/null || true
     rmdir ${CONFIGFS_DIR}/functions/acm.usb0 2>/dev/null || true
     rmdir ${CONFIGFS_DIR}/functions/ncm.usb0 2>/dev/null || true
 
