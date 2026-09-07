@@ -7,7 +7,7 @@ set -e
 # The overlay may lose executable bits when the git working tree lives on a
 # Windows checkout, so fix permissions explicitly.
 chmod 644 /etc/systemd/system/*.service /etc/modprobe.d/*.conf
-chmod 755 /usr/local/lib/umeko/*.sh
+chmod 755 /usr/local/lib/umeko/*.sh /usr/local/sbin/*.sh
 
 # Mount the extlinux bootfs at /boot: kernel/dtbs/extlinux.conf live there,
 # mounting it lets the running system inspect and update them.
@@ -18,7 +18,7 @@ echo "UUID=${BOOTFS_UUID} /boot ext2 defaults 0 2" >> /etc/fstab
 systemctl enable \
     umeko-modem-firmware.service \
     usb-gadget.service \
-    autottyGS0.service \
+    ncm-serial.service \
     autoresize.service \
     auto_rmi4_reload.service \
     autocanup.service
