@@ -24,7 +24,7 @@
 ## 首次登录
 
 - 用户名 `umeko`，密码 `1234`
-- **最快的方式**：USB 线把手机插上电脑，设备管理器/设备列表里会多出一个串口（ttyGS0 / COMx），用任意串口工具（115200 8N1）或直接 `screen`/`PuTTY` 打开——**免密直接进入 shell**（autottyGS0 服务）。同时还会多出一张 USB 网卡（NCM）：手机侧是 `192.168.100.1`，电脑侧拿到同网段地址后可以直接 `ssh umeko@192.168.100.1`
+- **最快的方式**：USB 线把手机插上电脑，设备管理器/设备列表里会多出一个串口（ttyGS0 / COMx），用任意串口工具（115200 8N1）或直接 `screen`/`PuTTY` 打开——**免密直接进入 shell**（ncm-serial 服务在 ttyGS0 上挂了 agetty）。同时还会多出一张 USB 网卡（NCM）：手机侧是 `192.168.100.1`，电脑侧拿到同网段地址后可以直接 `ssh umeko@192.168.100.1`
 - 屏幕上也直接有登录提示；有 TTL 线的话 UART 是 ttyMSM0
 
 ## 配网
@@ -54,7 +54,7 @@ ssh umeko@<手机IP>        # 之后就可以 SSH 了
 | 服务 | 默认 | 作用 |
 | --- | --- | --- |
 | `umeko-modem-firmware` | 启用 | 从 modem 分区提取 WiFi/基带固件到 /lib/firmware（一次性） |
-| `autottyGS0` | 启用 | USB 串口免密控制台 |
+| `ncm-serial` | 启用 | USB 串口免密控制台 + usb0 网卡地址配置 |
 | `autoresize` | 启用 | 开机自动把根文件系统扩满 userdata 分区（oneshot） |
 | `auto_rmi4_reload` | 启用 | 触摸屏驱动重载 workaround |
 | `autowebssh` | 启用 | webssh，端口 8888 |

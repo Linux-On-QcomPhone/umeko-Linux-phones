@@ -41,7 +41,7 @@ pack.sh            legacy 路线（CI 不再构建）：mkbootimg 出 boot.img �
 | --- | --- |
 | `umeko-modem-firmware` | 首次开机从手机 modem 分区提取 WiFi/基带固件到 `/lib/firmware`（wcnss 等，不可再分发故不打包进镜像） |
 | `usb-gadget` | 开机用 configfs 组装 USB 复合 gadget：acm 串口（ttyGS0）+ NCM 网卡（usb0，手机端 192.168.100.1） |
-| `autottyGS0` | ttyGS0 免密自动登录控制台 |
+| `ncm-serial` | ttyGS0 免密自动登录控制台 |
 | `autoresize` | 开机自动把根分区文件系统扩满 userdata |
 | `auto_rmi4_reload` + `touchscreens-workaround.conf` | 触摸屏驱动 workaround |
 | `autowebssh` | webssh 网页 SSH（端口 8888；cancro 暂无 armhf 二进制，WIP 未启用） |
@@ -69,7 +69,7 @@ pack.sh            legacy 路线（CI 不再构建）：mkbootimg 出 boot.img �
 ├── .github/workflows/build.yml   # CI 流水线（build: msm8916 合并包；build-cancro: armhf 独立包）
 ├── .github/workflows/pages.yml   # 文档站部署（GitHub Pages）
 ├── config/base.env               # 全局配置（ubuntu-base 源、预装包、时区、bootfs UUID、buffyboard 开关）
-├── config/rootfs/                # 全机型共享 overlay：umeko 服务套件（usb-gadget/autottyGS0/...）
+├── config/rootfs/                # 全机型共享 overlay：umeko 服务套件（usb-gadget/ncm-serial/...）
 ├── devices/wt88047.env           # 机型配置（内核/dtb/mkbootimg 参数/lk2nd/cmdline/webssh 源）
 ├── devices/wt88047/              # 机型定制：kernel.config、post-assemble.sh
 ├── devices/vivo-y23l.env         # 第二机型配置（与 wt88047 合并出 extlinux 包）

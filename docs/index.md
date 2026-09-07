@@ -43,7 +43,7 @@
 | 服务 | 作用 |
 | --- | --- |
 | `umeko-modem-firmware` | 首次开机从手机自己的 modem 分区提取 WiFi/基带固件（高通专有固件不能打进发布物，设备上自提取） |
-| `autottyGS0` | USB 串口免密自动登录控制台 |
+| `ncm-serial` | USB 串口免密自动登录控制台（agetty on ttyGS0） |
 | `autoresize` | 开机自动把根分区扩满整个 userdata |
 | `auto_rmi4_reload` | 触摸屏驱动 workaround（配合 `touchscreens-workaround.conf`） |
 | `autowebssh` | webssh 网页 SSH（端口 8888） |
